@@ -39,7 +39,7 @@ export function LearningImage({
   }
 
   const label = type === 'letter' 
-    ? `${imageData.letter} is for ${(imageData as any).word}` 
+    ? `${(imageData as any).letter} is for ${(imageData as any).word}` 
     : `${(imageData as any).description}`;
 
   return (

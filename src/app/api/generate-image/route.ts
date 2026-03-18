@@ -145,7 +145,7 @@ async function generateWithOpenAI(prompt: string): Promise<Buffer> {
     response_format: 'b64_json',
   });
 
-  const imageData = response.data[0]?.b64_json;
+  const imageData = response.data?.[0]?.b64_json;
   if (!imageData) {
     throw new Error('No image data returned');
   }
