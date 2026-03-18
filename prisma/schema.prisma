@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Learner {
+  id        String   @id @default(cuid())
+  name      String
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions Session[]
+  progress Progress[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  learnerId String
+  learner   Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  durationMs  Int?
+
+  moduleType  String // 'numbers' | 'alphabet'
+  difficulty  String   @default("easy") // 'easy' | 'medium' | 'hard'
+
+  activities Activity[]
+
+  @@index([learnerId])
+  @@index([startedAt])
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  activityType String // 'recognition' | 'counting' | 'matching' | 'tracing' | 'phonics'
+  target       String // The number or letter being learned
+  attempts     Int      @default(0)
+  correct      Boolean
+  responseTimeMs Int?
+
+  aiHintUsed   Boolean  @default(false)
+  voicePlayed  Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([activityType])
+}
+
+model Progress {
+  id        String   @id @default(cuid())
+  learnerId String
+  learner   Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+
+  moduleType String // 'numbers' | 'alphabet'
+  item       String // Specific number (0-9) or letter (A-Z)
+
+  masteryLevel  Int      @default(0) // 0-100
+  totalAttempts Int      @default(0)
+  correctCount  Int      @default(0)
+  lastPracticed DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([learnerId, moduleType, item])
+  @@index([learnerId])
+}
+
+model AIInteraction {
+  id        String   @id @default(cuid())
+  sessionId String?
+
+  provider   String // 'openai' | 'anthropic' | 'google'
+  model      String
+  prompt     String
+  response   String
+  tokensUsed Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([provider])
+}
