@@ -99,7 +99,7 @@ function calculateStreak(dates: Date[]): number {
     .map((d) => new Date(d.toDateString()))
     .sort((a, b) => b.getTime() - a.getTime());
 
-  const uniqueDates = [...new Set(sortedDates.map((d) => d.toDateString()))].map(
+  const uniqueDates = Array.from(new Set(sortedDates.map((d) => d.toDateString()))).map(
     (s) => new Date(s)
   );
 
