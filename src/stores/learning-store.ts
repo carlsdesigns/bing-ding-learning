@@ -20,7 +20,7 @@ interface LearningActions {
   setModule: (module: ModuleType) => void;
   setCurrentItem: (item: string) => void;
   setDifficulty: (difficulty: Difficulty) => void;
-  setSessionId: (sessionId: string) => void;
+  setSessionId: (sessionId: string | null) => void;
   setLearnerId: (learnerId: string) => void;
   incrementAttempts: () => void;
   resetAttempts: () => void;
