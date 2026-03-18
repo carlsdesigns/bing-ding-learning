@@ -18,20 +18,37 @@ export const IMAGE_STYLE = `
   cute, friendly, cartoon style illustration for children,
   soft pastel colors, simple rounded shapes,
   educational, cheerful, welcoming,
-  clean white background,
+  clean transparent background,
   no text or letters in the image,
   high quality, digital art
 `.trim().replace(/\n/g, ' ');
 
 /**
- * DALL-E SETTINGS
- * ---------------
- * Adjust these to control image quality and size.
+ * IMAGE GENERATION PROVIDER
+ * -------------------------
+ * Choose which AI to use for image generation.
+ * Options: 'openai' (DALL-E) or 'google' (Imagen via Gemini)
+ */
+export const IMAGE_PROVIDER: 'openai' | 'google' = 'google';
+
+/**
+ * DALL-E SETTINGS (OpenAI)
+ * ------------------------
+ * Used when IMAGE_PROVIDER = 'openai'
  */
 export const DALLE_CONFIG = {
   model: 'dall-e-3' as const,
   size: '1024x1024' as const,
   quality: 'standard' as const, // 'standard' or 'hd' (hd costs more)
+};
+
+/**
+ * IMAGEN SETTINGS (Google Gemini)
+ * -------------------------------
+ * Used when IMAGE_PROVIDER = 'google'
+ */
+export const IMAGEN_CONFIG = {
+  model: 'imagen-3.0-generate-002', // Imagen 3 model
 };
 
 /**

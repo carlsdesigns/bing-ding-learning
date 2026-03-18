@@ -1,17 +1,26 @@
 import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as https from 'https';
+import * as dotenv from 'dotenv';
 import { 
   IMAGE_STYLE, 
+  IMAGE_PROVIDER,
   DALLE_CONFIG, 
+  IMAGEN_CONFIG,
   LETTER_CONFIG, 
   NUMBER_CONFIG 
 } from './image-config';
 
+// Load environment variables from .env file
+dotenv.config();
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
 
 const OUTPUT_DIR = path.join(process.cwd(), 'public', 'images', 'generated');
 const LETTERS_DIR = path.join(OUTPUT_DIR, 'alphabet');
@@ -33,6 +42,70 @@ async function downloadImage(url: string, filepath: string): Promise<void> {
   });
 }
 
+async function generateImageWithOpenAI(prompt: string, filepath: string): Promise<void> {
+  const response = await openai.images.generate({
+    model: DALLE_CONFIG.model,
+    prompt: `${prompt}, ${IMAGE_STYLE}`,
+    n: 1,
+    size: DALLE_CONFIG.size,
+    quality: DALLE_CONFIG.quality,
+  });
+
+  const imageUrl = response.data[0]?.url;
+  if (!imageUrl) {
+    throw new Error('No image URL returned');
+  }
+
+  await downloadImage(imageUrl, filepath);
+}
+
+async function generateImageWithGoogle(prompt: string, filepath: string): Promise<void> {
+  const fullPrompt = `${prompt}, ${IMAGE_STYLE}`;
+  
+  // Using Imagen 4 via predict endpoint
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${process.env.GOOGLE_AI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        instances: [{ prompt: fullPrompt }],
+        parameters: {
+          sampleCount: 1,
+          aspectRatio: '1:1',
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`  API Response Status: ${response.status}`);
+    console.error(`  API Response: ${errorText}`);
+    throw new Error(`Google API error (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  
+  // Find image in response
+  const predictions = data.predictions;
+  if (!predictions || predictions.length === 0) {
+    console.error('Response:', JSON.stringify(data, null, 2));
+    throw new Error('No predictions in response');
+  }
+
+  const imageData = predictions[0].bytesBase64Encoded;
+  if (!imageData) {
+    console.error('Response:', JSON.stringify(data, null, 2));
+    throw new Error('No image bytes in response');
+  }
+
+  const imageBuffer = Buffer.from(imageData, 'base64');
+  fs.writeFileSync(filepath, imageBuffer);
+}
+
 async function generateImage(prompt: string, filename: string, outputDir: string): Promise<string> {
   const filepath = path.join(outputDir, filename);
   
@@ -41,23 +114,15 @@ async function generateImage(prompt: string, filename: string, outputDir: string
     return filepath;
   }
 
-  console.log(`  🎨 Generating: ${filename}...`);
+  console.log(`  🎨 Generating: ${filename} (using ${IMAGE_PROVIDER})...`);
   
   try {
-    const response = await openai.images.generate({
-      model: DALLE_CONFIG.model,
-      prompt: `${prompt}, ${IMAGE_STYLE}`,
-      n: 1,
-      size: DALLE_CONFIG.size,
-      quality: DALLE_CONFIG.quality,
-    });
-
-    const imageUrl = response.data[0]?.url;
-    if (!imageUrl) {
-      throw new Error('No image URL returned');
+    if (IMAGE_PROVIDER === 'google') {
+      await generateImageWithGoogle(prompt, filepath);
+    } else {
+      await generateImageWithOpenAI(prompt, filepath);
     }
 
-    await downloadImage(imageUrl, filepath);
     console.log(`  ✅ Saved: ${filename}`);
     
     // Rate limit: wait between requests

@@ -75,13 +75,19 @@ export default function HomePage() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.6 }}
-        className="mt-12"
+        className="mt-12 flex gap-6"
       >
         <Link
           href="/settings"
           className="text-gray-500 hover:text-gray-700 text-lg"
         >
           Settings
+        </Link>
+        <Link
+          href="/admin/images"
+          className="text-gray-500 hover:text-gray-700 text-lg"
+        >
+          Image Manager
         </Link>
       </motion.div>
     </main>

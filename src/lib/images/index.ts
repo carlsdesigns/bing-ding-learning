@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 export interface LetterImage {
   letter: string;
   word: string;
@@ -16,60 +19,101 @@ export interface ImageManifest {
   numbers: NumberImage[];
 }
 
-export const LETTER_IMAGES: Record<string, LetterImage> = {
-  A: { letter: 'A', word: 'Apple', image: '/images/generated/alphabet/a.png' },
-  B: { letter: 'B', word: 'Bear', image: '/images/generated/alphabet/b.png' },
-  C: { letter: 'C', word: 'Cat', image: '/images/generated/alphabet/c.png' },
-  D: { letter: 'D', word: 'Dog', image: '/images/generated/alphabet/d.png' },
-  E: { letter: 'E', word: 'Elephant', image: '/images/generated/alphabet/e.png' },
-  F: { letter: 'F', word: 'Fish', image: '/images/generated/alphabet/f.png' },
-  G: { letter: 'G', word: 'Giraffe', image: '/images/generated/alphabet/g.png' },
-  H: { letter: 'H', word: 'Hat', image: '/images/generated/alphabet/h.png' },
-  I: { letter: 'I', word: 'Ice cream', image: '/images/generated/alphabet/i.png' },
-  J: { letter: 'J', word: 'Jellyfish', image: '/images/generated/alphabet/j.png' },
-  K: { letter: 'K', word: 'Kite', image: '/images/generated/alphabet/k.png' },
-  L: { letter: 'L', word: 'Lion', image: '/images/generated/alphabet/l.png' },
-  M: { letter: 'M', word: 'Moon', image: '/images/generated/alphabet/m.png' },
-  N: { letter: 'N', word: 'Nest', image: '/images/generated/alphabet/n.png' },
-  O: { letter: 'O', word: 'Owl', image: '/images/generated/alphabet/o.png' },
-  P: { letter: 'P', word: 'Penguin', image: '/images/generated/alphabet/p.png' },
-  Q: { letter: 'Q', word: 'Queen', image: '/images/generated/alphabet/q.png' },
-  R: { letter: 'R', word: 'Rainbow', image: '/images/generated/alphabet/r.png' },
-  S: { letter: 'S', word: 'Sun', image: '/images/generated/alphabet/s.png' },
-  T: { letter: 'T', word: 'Tiger', image: '/images/generated/alphabet/t.png' },
-  U: { letter: 'U', word: 'Umbrella', image: '/images/generated/alphabet/u.png' },
-  V: { letter: 'V', word: 'Violin', image: '/images/generated/alphabet/v.png' },
-  W: { letter: 'W', word: 'Whale', image: '/images/generated/alphabet/w.png' },
-  X: { letter: 'X', word: 'Xylophone', image: '/images/generated/alphabet/x.png' },
-  Y: { letter: 'Y', word: 'Yacht', image: '/images/generated/alphabet/y.png' },
-  Z: { letter: 'Z', word: 'Zebra', image: '/images/generated/alphabet/z.png' },
+const LETTER_WORDS: Record<string, string> = {
+  A: 'Apple', B: 'Bear', C: 'Cat', D: 'Dog', E: 'Elephant',
+  F: 'Fish', G: 'Giraffe', H: 'Hat', I: 'Ice cream', J: 'Jellyfish',
+  K: 'Kite', L: 'Lion', M: 'Moon', N: 'Nest', O: 'Owl',
+  P: 'Penguin', Q: 'Queen', R: 'Rainbow', S: 'Sun', T: 'Tiger',
+  U: 'Umbrella', V: 'Violin', W: 'Whale', X: 'Xylophone', Y: 'Yacht', Z: 'Zebra',
 };
 
-export const NUMBER_IMAGES: Record<string, NumberImage> = {
-  '0': { number: '0', description: 'Zero', image: '/images/generated/numbers/0.png' },
-  '1': { number: '1', description: 'One balloon', image: '/images/generated/numbers/1.png' },
-  '2': { number: '2', description: 'Two kittens', image: '/images/generated/numbers/2.png' },
-  '3': { number: '3', description: 'Three butterflies', image: '/images/generated/numbers/3.png' },
-  '4': { number: '4', description: 'Four apples', image: '/images/generated/numbers/4.png' },
-  '5': { number: '5', description: 'Five ducks', image: '/images/generated/numbers/5.png' },
-  '6': { number: '6', description: 'Six crayons', image: '/images/generated/numbers/6.png' },
-  '7': { number: '7', description: 'Seven stars', image: '/images/generated/numbers/7.png' },
-  '8': { number: '8', description: 'Eight bees', image: '/images/generated/numbers/8.png' },
-  '9': { number: '9', description: 'Nine balls', image: '/images/generated/numbers/9.png' },
+const NUMBER_DESCRIPTIONS: Record<string, string> = {
+  '0': 'Zero', '1': 'One balloon', '2': 'Two kittens', '3': 'Three butterflies',
+  '4': 'Four apples', '5': 'Five ducks', '6': 'Six crayons',
+  '7': 'Seven stars', '8': 'Eight bees', '9': 'Nine balls',
 };
+
+function getSelectedOrLatestImage(type: 'letter' | 'number', item: string): string | undefined {
+  const baseDir = type === 'letter' ? 'alphabet' : 'numbers';
+  const itemDir = path.join(process.cwd(), 'public', 'images', 'generated', baseDir, item.toLowerCase());
+  
+  // Check if running in browser (client-side)
+  if (typeof window !== 'undefined') {
+    // Client-side: return the expected path format
+    return `/images/generated/${baseDir}/${item.toLowerCase()}/`;
+  }
+  
+  // Server-side: check filesystem
+  if (!fs.existsSync(itemDir)) {
+    return undefined;
+  }
+
+  // Check for selected image
+  const selectionFile = path.join(itemDir, '.selected');
+  if (fs.existsSync(selectionFile)) {
+    return fs.readFileSync(selectionFile, 'utf-8').trim();
+  }
+
+  // Get most recent image
+  const files = fs.readdirSync(itemDir)
+    .filter(f => f.endsWith('.png'))
+    .map(f => ({
+      name: f,
+      path: `/images/generated/${baseDir}/${item.toLowerCase()}/${f}`,
+      time: fs.statSync(path.join(itemDir, f)).mtimeMs,
+    }))
+    .sort((a, b) => b.time - a.time);
+
+  return files[0]?.path;
+}
 
 export function getLetterImage(letter: string): LetterImage | undefined {
-  return LETTER_IMAGES[letter.toUpperCase()];
+  const upperLetter = letter.toUpperCase();
+  const word = LETTER_WORDS[upperLetter];
+  
+  if (!word) return undefined;
+
+  const image = getSelectedOrLatestImage('letter', upperLetter);
+  
+  return {
+    letter: upperLetter,
+    word,
+    image: image || `/images/generated/alphabet/${letter.toLowerCase()}/`,
+  };
 }
 
 export function getNumberImage(number: string | number): NumberImage | undefined {
-  return NUMBER_IMAGES[String(number)];
+  const numStr = String(number);
+  const description = NUMBER_DESCRIPTIONS[numStr];
+  
+  if (!description) return undefined;
+
+  const image = getSelectedOrLatestImage('number', numStr);
+  
+  return {
+    number: numStr,
+    description,
+    image: image || `/images/generated/numbers/${numStr}/`,
+  };
 }
 
 export function getAllLetterImages(): LetterImage[] {
-  return Object.values(LETTER_IMAGES);
+  return Object.keys(LETTER_WORDS).map(letter => getLetterImage(letter)!);
 }
 
 export function getAllNumberImages(): NumberImage[] {
-  return Object.values(NUMBER_IMAGES);
+  return Object.keys(NUMBER_DESCRIPTIONS).map(num => getNumberImage(num)!);
+}
+
+export function getAvailableImages(type: 'letter' | 'number', item: string): string[] {
+  const baseDir = type === 'letter' ? 'alphabet' : 'numbers';
+  const itemDir = path.join(process.cwd(), 'public', 'images', 'generated', baseDir, item.toLowerCase());
+  
+  if (typeof window !== 'undefined' || !fs.existsSync(itemDir)) {
+    return [];
+  }
+
+  return fs.readdirSync(itemDir)
+    .filter(f => f.endsWith('.png'))
+    .map(f => `/images/generated/${baseDir}/${item.toLowerCase()}/${f}`);
 }
