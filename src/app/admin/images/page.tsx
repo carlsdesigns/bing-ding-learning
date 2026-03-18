@@ -20,6 +20,11 @@ interface ItemData {
   selectedImage?: string;
 }
 
+interface PromptConfig {
+  letters: Record<string, { word: string; prompt: string }>;
+  numbers: Record<string, { description: string; prompt: string }>;
+}
+
 type Tab = 'letters' | 'numbers';
 type Provider = 'google' | 'openai';
 
@@ -32,16 +37,63 @@ export default function ImageManagerPage() {
   const [progress, setProgress] = useState<string[]>([]);
   const [provider, setProvider] = useState<Provider>('google');
   const [newImage, setNewImage] = useState<string | null>(null);
+  const [prompts, setPrompts] = useState<PromptConfig | null>(null);
+  const [editedPrompt, setEditedPrompt] = useState<string>('');
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [savingPrompt, setSavingPrompt] = useState(false);
 
   useEffect(() => {
     fetchImages();
+    fetchPrompts();
   }, []);
+
+  useEffect(() => {
+    if (selectedItem && prompts) {
+      const config = selectedItem.type === 'letter' 
+        ? prompts.letters[selectedItem.item.toUpperCase()]
+        : prompts.numbers[selectedItem.item];
+      if (config) {
+        setEditedPrompt(config.prompt);
+        setIsEditingPrompt(false);
+      }
+    }
+  }, [selectedItem, prompts]);
 
   const fetchImages = async () => {
     const response = await fetch('/api/images');
     const data = await response.json();
     setLetters(data.letters);
     setNumbers(data.numbers);
+  };
+
+  const fetchPrompts = async () => {
+    const response = await fetch('/api/prompts');
+    const data = await response.json();
+    setPrompts(data);
+  };
+
+  const savePrompt = async () => {
+    if (!selectedItem) return;
+    
+    setSavingPrompt(true);
+    try {
+      await fetch('/api/prompts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: selectedItem.type,
+          item: selectedItem.item,
+          prompt: editedPrompt,
+        }),
+      });
+      
+      await fetchPrompts();
+      setIsEditingPrompt(false);
+    } catch (error) {
+      console.error('Failed to save prompt:', error);
+    } finally {
+      setSavingPrompt(false);
+    }
   };
 
   const generateImage = async (type: 'letter' | 'number', item: string) => {
@@ -53,7 +105,7 @@ export default function ImageManagerPage() {
       const response = await fetch('/api/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, item, provider }),
+        body: JSON.stringify({ type, item, provider, customPrompt: editedPrompt }),
       });
 
       const reader = response.body?.getReader();
@@ -218,6 +270,63 @@ export default function ImageManagerPage() {
             <CardContent>
               {selectedItem ? (
                 <div className="space-y-4">
+                  {/* Prompt Editor */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-sm font-medium text-gray-700">
+                        Prompt for "{selectedItem.item}"
+                        {selectedItem.type === 'letter' && prompts?.letters[selectedItem.item.toUpperCase()] && (
+                          <span className="text-gray-500 ml-2">
+                            ({prompts.letters[selectedItem.item.toUpperCase()].word})
+                          </span>
+                        )}
+                        {selectedItem.type === 'number' && prompts?.numbers[selectedItem.item] && (
+                          <span className="text-gray-500 ml-2">
+                            ({prompts.numbers[selectedItem.item].description})
+                          </span>
+                        )}
+                      </label>
+                      {isEditingPrompt && (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const config = selectedItem.type === 'letter'
+                                ? prompts?.letters[selectedItem.item.toUpperCase()]
+                                : prompts?.numbers[selectedItem.item];
+                              if (config) setEditedPrompt(config.prompt);
+                              setIsEditingPrompt(false);
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={savePrompt}
+                            disabled={savingPrompt}
+                          >
+                            {savingPrompt ? 'Saving...' : 'Save Prompt'}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    <textarea
+                      value={editedPrompt}
+                      onChange={(e) => {
+                        setEditedPrompt(e.target.value);
+                        setIsEditingPrompt(true);
+                      }}
+                      className="w-full h-24 p-3 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      placeholder="Enter the prompt for image generation..."
+                    />
+                    {isEditingPrompt && (
+                      <p className="text-xs text-amber-600">
+                        Prompt has been modified. Save to update the config file.
+                      </p>
+                    )}
+                  </div>
+
                   <Button
                     onClick={() => generateImage(selectedItem.type, selectedItem.item)}
                     disabled={generating}

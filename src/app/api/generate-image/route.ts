@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import * as fs from 'fs';
 import * as path from 'path';
+import { execSync } from 'child_process';
 
 const IMAGE_STYLE = `
   cute, friendly, cartoon style illustration for children,
@@ -60,12 +61,32 @@ function getConfig(type: 'letter' | 'number', item: string) {
   return NUMBER_CONFIG[item];
 }
 
+async function removeBackground(filepath: string): Promise<void> {
+  const pythonScript = path.join(process.cwd(), 'scripts', 'remove-background.py');
+  
+  console.log('[Background Removal] Starting...');
+  execSync(`python3 "${pythonScript}" "${filepath}"`, {
+    stdio: 'inherit',
+  });
+  console.log('[Background Removal] Complete!');
+}
+
 async function generateWithGoogle(prompt: string): Promise<Buffer> {
   const fullPrompt = `${prompt}, ${IMAGE_STYLE}`;
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
   
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${process.env.GOOGLE_AI_API_KEY}`,
-    {
+  if (!apiKey) {
+    throw new Error('GOOGLE_AI_API_KEY is not set in environment variables');
+  }
+  
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
+  
+  console.log('[Google API] Making request to Imagen 4...');
+  console.log('[Google API] Prompt:', fullPrompt.substring(0, 100) + '...');
+  
+  let response: Response;
+  try {
+    response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -75,26 +96,37 @@ async function generateWithGoogle(prompt: string): Promise<Buffer> {
           aspectRatio: '1:1',
         },
       }),
-    }
-  );
+    });
+  } catch (fetchError) {
+    console.error('[Google API] Fetch error:', fetchError);
+    throw new Error(`Network error calling Google API: ${fetchError instanceof Error ? fetchError.message : 'Unknown fetch error'}`);
+  }
 
+  console.log('[Google API] Response status:', response.status);
+  
   if (!response.ok) {
     const errorText = await response.text();
+    console.error('[Google API] Error response:', errorText);
     throw new Error(`Google API error (${response.status}): ${errorText}`);
   }
 
   const data = await response.json();
+  console.log('[Google API] Response keys:', Object.keys(data));
+  
   const predictions = data.predictions;
   
   if (!predictions || predictions.length === 0) {
+    console.error('[Google API] Full response:', JSON.stringify(data, null, 2));
     throw new Error('No predictions in response');
   }
 
   const imageData = predictions[0].bytesBase64Encoded;
   if (!imageData) {
+    console.error('[Google API] Prediction:', JSON.stringify(predictions[0], null, 2));
     throw new Error('No image bytes in response');
   }
 
+  console.log('[Google API] Success! Image size:', imageData.length, 'bytes (base64)');
   return Buffer.from(imageData, 'base64');
 }
 
@@ -132,7 +164,7 @@ export async function POST(request: NextRequest) {
 
       try {
         const body = await request.json();
-        const { type, item, provider = 'google' } = body;
+        const { type, item, provider = 'google', customPrompt } = body;
 
         if (!type || !item) {
           send({ status: 'error', message: 'Missing type or item' });
@@ -141,14 +173,16 @@ export async function POST(request: NextRequest) {
         }
 
         const config = getConfig(type, item);
-        if (!config) {
+        if (!config && !customPrompt) {
           send({ status: 'error', message: `Unknown ${type}: ${item}` });
           controller.close();
           return;
         }
 
+        const promptToUse = customPrompt || config?.prompt || '';
+
         send({ status: 'started', message: `Generating image for ${type} "${item}"...` });
-        send({ status: 'progress', message: `Using prompt: ${config.prompt}` });
+        send({ status: 'progress', message: `Using prompt: ${promptToUse}` });
 
         // Generate unique filename with timestamp
         const timestamp = Date.now();
@@ -168,13 +202,22 @@ export async function POST(request: NextRequest) {
 
         let imageBuffer: Buffer;
         if (provider === 'google') {
-          imageBuffer = await generateWithGoogle(config.prompt);
+          imageBuffer = await generateWithGoogle(promptToUse);
         } else {
-          imageBuffer = await generateWithOpenAI(config.prompt);
+          imageBuffer = await generateWithOpenAI(promptToUse);
         }
 
         send({ status: 'progress', message: 'Saving image...' });
         fs.writeFileSync(filepath, imageBuffer);
+
+        send({ status: 'progress', message: 'Removing background...' });
+        try {
+          await removeBackground(filepath);
+          send({ status: 'progress', message: 'Background removed!' });
+        } catch (bgError) {
+          console.error('[Background Removal] Error:', bgError);
+          send({ status: 'progress', message: 'Background removal failed, using original image' });
+        }
 
         send({ 
           status: 'complete', 

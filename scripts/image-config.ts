@@ -15,12 +15,13 @@
  * Edit this to change the overall look and feel of all generated images.
  */
 export const IMAGE_STYLE = `
-  cute, friendly, cartoon style illustration for children,
-  soft pastel colors, simple rounded shapes,
-  educational, cheerful, welcoming,
-  clean transparent background,
-  no text or letters in the image,
-  high quality, digital art
+  cute friendly cartoon illustration for children,
+  flat vector art style with clean sharp edges,
+  simple rounded shapes with soft pastel colors,
+  educational cheerful welcoming mood,
+  isolated on a solid #00FF00 background,
+  no shadows, no gradients, no text or letters,
+  high quality digital art, die-cut sticker with 8px #ffffff border aesthetic
 `.trim().replace(/\n/g, ' ');
 
 /**

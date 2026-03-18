@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as https from 'https';
 import * as dotenv from 'dotenv';
+import { execSync } from 'child_process';
 import { 
   IMAGE_STYLE, 
   IMAGE_PROVIDER,
@@ -25,6 +26,20 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
 const OUTPUT_DIR = path.join(process.cwd(), 'public', 'images', 'generated');
 const LETTERS_DIR = path.join(OUTPUT_DIR, 'alphabet');
 const NUMBERS_DIR = path.join(OUTPUT_DIR, 'numbers');
+const SCRIPTS_DIR = path.join(process.cwd(), 'scripts');
+
+async function removeBackground(filepath: string): Promise<void> {
+  const pythonScript = path.join(SCRIPTS_DIR, 'remove-background.py');
+  
+  try {
+    execSync(`python3 "${pythonScript}" "${filepath}"`, {
+      stdio: 'inherit',
+    });
+    console.log(`  🔲 Background removed: ${path.basename(filepath)}`);
+  } catch (error) {
+    console.error(`  ⚠️  Background removal failed for ${path.basename(filepath)}:`, error);
+  }
+}
 
 async function downloadImage(url: string, filepath: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -124,6 +139,8 @@ async function generateImage(prompt: string, filename: string, outputDir: string
     }
 
     console.log(`  ✅ Saved: ${filename}`);
+    
+    await removeBackground(filepath);
     
     // Rate limit: wait between requests
     await new Promise(resolve => setTimeout(resolve, 2000));
