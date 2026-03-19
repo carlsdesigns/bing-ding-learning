@@ -6,6 +6,9 @@ import * as crypto from 'crypto';
 
 const CACHE_DIR = path.join(process.cwd(), 'public', 'audio', 'tts-cache');
 
+// Check if we're in a read-only environment (like Vercel)
+const isReadOnlyEnvironment = process.env.VERCEL === '1';
+
 function getCacheKey(text: string, voiceId?: string): string {
   const normalizedText = text.toLowerCase().trim();
   const key = `${normalizedText}-${voiceId || 'default'}`;
@@ -16,26 +19,45 @@ function getCachePath(cacheKey: string): string {
   return path.join(CACHE_DIR, `${cacheKey}.mp3`);
 }
 
-function ensureCacheDir(): void {
-  if (!fs.existsSync(CACHE_DIR)) {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
+function ensureCacheDir(): boolean {
+  if (isReadOnlyEnvironment) return false;
+  try {
+    if (!fs.existsSync(CACHE_DIR)) {
+      fs.mkdirSync(CACHE_DIR, { recursive: true });
+    }
+    return true;
+  } catch {
+    return false;
   }
 }
 
 function getFromCache(cacheKey: string): Buffer | null {
-  const cachePath = getCachePath(cacheKey);
-  if (fs.existsSync(cachePath)) {
-    console.log(`TTS cache hit: ${cacheKey}`);
-    return fs.readFileSync(cachePath);
+  try {
+    const cachePath = getCachePath(cacheKey);
+    if (fs.existsSync(cachePath)) {
+      console.log(`TTS cache hit: ${cacheKey}`);
+      return fs.readFileSync(cachePath);
+    }
+  } catch (error) {
+    console.log('Cache read error (expected on Vercel):', error);
   }
   return null;
 }
 
 function saveToCache(cacheKey: string, audioBuffer: ArrayBuffer): void {
-  ensureCacheDir();
-  const cachePath = getCachePath(cacheKey);
-  fs.writeFileSync(cachePath, Buffer.from(audioBuffer));
-  console.log(`TTS cached: ${cacheKey}`);
+  if (isReadOnlyEnvironment) {
+    console.log('Skipping cache save (read-only environment)');
+    return;
+  }
+  try {
+    if (ensureCacheDir()) {
+      const cachePath = getCachePath(cacheKey);
+      fs.writeFileSync(cachePath, Buffer.from(audioBuffer));
+      console.log(`TTS cached: ${cacheKey}`);
+    }
+  } catch (error) {
+    console.log('Cache write error:', error);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -82,8 +104,18 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Text to speech error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Check for common issues
+    if (errorMessage.includes('ELEVENLABS_API_KEY')) {
+      return NextResponse.json(
+        { error: 'ElevenLabs API key not configured. Add ELEVENLABS_API_KEY to environment variables.' },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
-      { error: 'Failed to generate speech' },
+      { error: `Failed to generate speech: ${errorMessage}` },
       { status: 500 }
     );
   }
