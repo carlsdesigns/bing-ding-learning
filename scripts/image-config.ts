@@ -181,7 +181,7 @@ export const LETTER_CONFIG: Record<string, { word: string; prompt: string }> = {
 export const NUMBER_CONFIG: Record<string, { description: string; prompt: string }> = {
   '0': { 
     description: 'Zero', 
-    prompt: 'An empty bird nest, cozy but with nothing inside, peaceful' 
+    prompt: 'A puffer fish in the shape of an O, with a hole in the middle of it' 
   },
   '1': { 
     description: 'One balloon', 
@@ -193,30 +193,30 @@ export const NUMBER_CONFIG: Record<string, { description: string; prompt: string
   },
   '3': { 
     description: 'Three butterflies', 
-    prompt: 'Three colorful butterflies flying together, pink blue and yellow' 
+    prompt: 'Three colorful caterpillars, pink blue and yellow, in the shape of a 3' 
   },
   '4': { 
     description: 'Four apples', 
-    prompt: 'Four shiny apples in a row, red and green alternating' 
+    prompt: 'a flamingo in the shape of a 4, standing on one leg' 
   },
   '5': { 
     description: 'Five ducks', 
-    prompt: 'Five yellow rubber ducks in a line, cute and cheerful' 
+    prompt: 'a snake in the shape of a 5' 
   },
   '6': { 
     description: 'Six crayons', 
-    prompt: 'Six colorful crayons standing upright, rainbow colors' 
+    prompt: 'a snail in the shape of a 6' 
   },
   '7': { 
     description: 'Seven stars', 
-    prompt: 'Seven twinkling golden stars arranged in the sky, sparkling' 
+    prompt: 'a Praying Mantis in the shape of a 7' 
   },
   '8': { 
     description: 'Eight bees', 
-    prompt: 'Eight happy bumblebees flying in a group, yellow and black stripes' 
+    prompt: 'Coiled Millipede in the shape of an 8' 
   },
   '9': { 
     description: 'Nine balls', 
-    prompt: 'Nine bouncy balls in different colors arranged in a grid, colorful' 
+    prompt: 'a Tadpole in the shape of a 9' 
   },
 };
