@@ -42,6 +42,15 @@ function preprocessText(text: string): string {
     }
   );
   
+  // Replace "X is for" patterns (e.g., "A is for Apple" -> "Ay is for Apple")
+  processed = processed.replace(
+    /^([A-Z])\s+is\s+for\b/gi,
+    (match, letter) => {
+      const pronunciation = LETTER_PRONUNCIATIONS[letter.toUpperCase()];
+      return pronunciation ? `${pronunciation} is for` : match;
+    }
+  );
+  
   // Add slight pause at end to prevent cutoff
   if (!processed.endsWith('.') && !processed.endsWith('!') && !processed.endsWith('?')) {
     processed += '.';

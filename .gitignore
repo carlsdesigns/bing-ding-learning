@@ -47,3 +47,6 @@ data/
 .vscode
 *.swp
 *.swo
+
+# TTS Audio Cache (regenerated on demand)
+public/audio/tts-cache/

@@ -1,4 +1,4 @@
-type GameType = 'numbers' | 'alphabet';
+type GameType = 'numbers' | 'alphabet' | 'playground';
 
 const NUMBERS_INTROS = [
   (name: string) => `Hey ${name}! Let's play the numbers game!`,
@@ -12,6 +12,14 @@ const ALPHABET_INTROS = [
   (name: string) => `${name}, let's find some letters!`,
 ];
 
+const PLAYGROUND_INTROS = [
+  (name: string) => `Hey ${name}! Welcome to the playground! Press any letter and watch the magic happen!`,
+  (name: string) => `${name}, it's playtime! Tap the letters and fill the screen with fun pictures!`,
+  (name: string) => `Yay ${name}! This is your creative space! Press letters to make pictures appear!`,
+  (name: string) => `Hi ${name}! Let's make some art! Tap letters to see cool pictures pop up!`,
+  (name: string) => `${name}, get ready for fun! Press any letter and see what appears!`,
+];
+
 const NUMBERS_INTROS_NO_NAME = [
   `Hey! Let's play the numbers game!`,
   `Yay! Numbers time!`,
@@ -22,6 +30,14 @@ const ALPHABET_INTROS_NO_NAME = [
   `Hey! Let's play the alphabet game!`,
   `Yay! Letter time!`,
   `Let's find some letters!`,
+];
+
+const PLAYGROUND_INTROS_NO_NAME = [
+  `Welcome to the playground! Press any letter and watch the magic happen!`,
+  `It's playtime! Tap the letters and fill the screen with fun pictures!`,
+  `This is your creative space! Press letters to make pictures appear!`,
+  `Let's make some art! Tap letters to see cool pictures pop up!`,
+  `Get ready for fun! Press any letter and see what appears!`,
 ];
 
 const CORRECT_WITH_NAME = [
@@ -61,10 +77,18 @@ function randomFrom<T>(arr: T[]): T {
 
 export function getGameIntro(gameType: GameType, childName?: string): string {
   if (childName) {
-    const intros = gameType === 'numbers' ? NUMBERS_INTROS : ALPHABET_INTROS;
+    const intros = gameType === 'numbers' 
+      ? NUMBERS_INTROS 
+      : gameType === 'alphabet' 
+        ? ALPHABET_INTROS 
+        : PLAYGROUND_INTROS;
     return randomFrom(intros)(childName);
   } else {
-    const intros = gameType === 'numbers' ? NUMBERS_INTROS_NO_NAME : ALPHABET_INTROS_NO_NAME;
+    const intros = gameType === 'numbers' 
+      ? NUMBERS_INTROS_NO_NAME 
+      : gameType === 'alphabet' 
+        ? ALPHABET_INTROS_NO_NAME 
+        : PLAYGROUND_INTROS_NO_NAME;
     return randomFrom(intros);
   }
 }

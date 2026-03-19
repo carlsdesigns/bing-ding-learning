@@ -100,7 +100,7 @@ export default function HomePage() {
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -110,13 +110,13 @@ export default function HomePage() {
               <motion.div 
                 whileHover={{ scale: 1.03, y: -4 }}
                 whileTap={{ scale: 0.98 }}
-                className="bg-lime-500 rounded-4xl p-8 cursor-pointer shadow-xl hover:shadow-2xl transition-shadow h-56 flex flex-col items-center justify-center relative overflow-hidden"
+                className="bg-lime-500 rounded-4xl p-6 cursor-pointer shadow-xl hover:shadow-2xl transition-shadow h-48 flex flex-col items-center justify-center relative overflow-hidden"
               >
-                <div className="absolute -top-8 -right-8 w-32 h-32 bg-lime-400 rounded-full opacity-50" />
-                <div className="absolute -bottom-4 -left-4 w-20 h-20 bg-lime-600 rounded-full opacity-30" />
-                <span className="text-7xl md:text-8xl font-black text-white mb-2 relative z-10 text-shadow-fun">123</span>
-                <h2 className="text-2xl md:text-3xl font-bold text-white relative z-10">Numbers</h2>
-                <p className="text-lime-100 font-medium relative z-10">Count and learn!</p>
+                <div className="absolute -top-8 -right-8 w-24 h-24 bg-lime-400 rounded-full opacity-50" />
+                <div className="absolute -bottom-4 -left-4 w-16 h-16 bg-lime-600 rounded-full opacity-30" />
+                <span className="text-5xl md:text-6xl font-black text-white mb-2 relative z-10 text-shadow-fun">123</span>
+                <h2 className="text-xl md:text-2xl font-bold text-white relative z-10">Numbers</h2>
+                <p className="text-lime-100 font-medium text-sm relative z-10">Count and learn!</p>
               </motion.div>
             </Link>
           </motion.div>
@@ -130,13 +130,33 @@ export default function HomePage() {
               <motion.div 
                 whileHover={{ scale: 1.03, y: -4 }}
                 whileTap={{ scale: 0.98 }}
-                className="bg-orange-400 rounded-4xl p-8 cursor-pointer shadow-xl hover:shadow-2xl transition-shadow h-56 flex flex-col items-center justify-center relative overflow-hidden"
+                className="bg-orange-400 rounded-4xl p-6 cursor-pointer shadow-xl hover:shadow-2xl transition-shadow h-48 flex flex-col items-center justify-center relative overflow-hidden"
               >
-                <div className="absolute -top-6 -left-6 w-28 h-28 bg-orange-300 rounded-full opacity-50" />
-                <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-orange-500 rounded-full opacity-30" />
-                <span className="text-7xl md:text-8xl font-black text-white mb-2 relative z-10 text-shadow-fun">ABC</span>
-                <h2 className="text-2xl md:text-3xl font-bold text-white relative z-10">Alphabet</h2>
-                <p className="text-orange-100 font-medium relative z-10">Letters are fun!</p>
+                <div className="absolute -top-6 -left-6 w-24 h-24 bg-orange-300 rounded-full opacity-50" />
+                <div className="absolute -bottom-6 -right-6 w-20 h-20 bg-orange-500 rounded-full opacity-30" />
+                <span className="text-5xl md:text-6xl font-black text-white mb-2 relative z-10 text-shadow-fun">ABC</span>
+                <h2 className="text-xl md:text-2xl font-bold text-white relative z-10">Alphabet</h2>
+                <p className="text-orange-100 font-medium text-sm relative z-10">Letters are fun!</p>
+              </motion.div>
+            </Link>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+          >
+            <Link href="/playground">
+              <motion.div 
+                whileHover={{ scale: 1.03, y: -4 }}
+                whileTap={{ scale: 0.98 }}
+                className="bg-pink-400 rounded-4xl p-6 cursor-pointer shadow-xl hover:shadow-2xl transition-shadow h-48 flex flex-col items-center justify-center relative overflow-hidden"
+              >
+                <div className="absolute -top-6 -right-6 w-24 h-24 bg-pink-300 rounded-full opacity-50" />
+                <div className="absolute -bottom-4 -left-4 w-20 h-20 bg-pink-500 rounded-full opacity-30" />
+                <span className="text-5xl md:text-6xl relative z-10">🎨</span>
+                <h2 className="text-xl md:text-2xl font-bold text-white relative z-10">Playground</h2>
+                <p className="text-pink-100 font-medium text-sm relative z-10">Create and explore!</p>
               </motion.div>
             </Link>
           </motion.div>
@@ -180,6 +200,12 @@ export default function HomePage() {
             className="text-gray-400 hover:text-gray-600 text-lg font-medium transition-colors"
           >
             Image Manager
+          </Link>
+          <Link
+            href="/admin/voice"
+            className="text-gray-400 hover:text-gray-600 text-lg font-medium transition-colors"
+          >
+            Voice Settings
           </Link>
         </motion.div>
       </div>
