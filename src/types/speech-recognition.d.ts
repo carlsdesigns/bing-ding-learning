@@ -1,4 +1,5 @@
 // Web Speech API type declarations
+
 interface SpeechRecognitionEvent extends Event {
   readonly resultIndex: number;
   readonly results: SpeechRecognitionResultList;
@@ -48,11 +49,12 @@ interface SpeechRecognition extends EventTarget {
   stop(): void;
 }
 
-interface SpeechRecognitionConstructor {
+declare var SpeechRecognition: {
+  prototype: SpeechRecognition;
   new (): SpeechRecognition;
-}
+};
 
-interface Window {
-  SpeechRecognition: SpeechRecognitionConstructor;
-  webkitSpeechRecognition: SpeechRecognitionConstructor;
-}
+declare var webkitSpeechRecognition: {
+  prototype: SpeechRecognition;
+  new (): SpeechRecognition;
+};
