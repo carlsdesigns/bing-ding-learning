@@ -8,10 +8,10 @@ const IMAGE_STYLE = `
   flat vector art style with clean sharp edges,
   simple rounded shapes with soft pastel colors,
   educational cheerful welcoming mood,
-  CRITICAL: background must be 100% pure chroma key green screen green (RGB 0, 255, 0) - the exact bright neon green used in video production green screens - completely flat uniform solid color with absolutely no variation shading or texture,
+  CRITICAL: background must be solid bright magenta pink color (hex FF00FF, RGB 255,0,255) - hot pink/fuchsia background - completely flat uniform solid color with no variation or texture,
   the subject has a thick pure white border outline around it like a die-cut sticker,
   no shadows, no gradients, no text or letters,
-  high quality digital art, single centered subject floating on perfectly flat solid chroma key green background
+  high quality digital art, single centered subject floating on flat solid magenta pink background
 `.trim().replace(/\n/g, ' ');
 
 const LETTER_CONFIG: Record<string, { word: string; prompt: string }> = {
