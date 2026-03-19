@@ -8,7 +8,7 @@ export function useVoice() {
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const speak = useCallback(async (text: string, voiceId?: string) => {
+  const speak = useCallback(async (text: string, voiceId?: string): Promise<void> => {
     setIsLoading(true);
     setError(null);
 
@@ -34,19 +34,24 @@ export function useVoice() {
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
 
-      audio.onplay = () => setIsPlaying(true);
-      audio.onended = () => {
-        setIsPlaying(false);
-        URL.revokeObjectURL(audioUrl);
-      };
-      audio.onerror = () => {
-        setError('Failed to play audio');
-        setIsPlaying(false);
-      };
+      return new Promise((resolve, reject) => {
+        audio.onplay = () => setIsPlaying(true);
+        audio.onended = () => {
+          setIsPlaying(false);
+          URL.revokeObjectURL(audioUrl);
+          resolve();
+        };
+        audio.onerror = () => {
+          setError('Failed to play audio');
+          setIsPlaying(false);
+          reject(new Error('Failed to play audio'));
+        };
 
-      await audio.play();
+        audio.play().catch(reject);
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
+      throw err;
     } finally {
       setIsLoading(false);
     }

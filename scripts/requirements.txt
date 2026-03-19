@@ -1,2 +1,3 @@
-rembg[cpu]
 pillow
+scipy
+numpy

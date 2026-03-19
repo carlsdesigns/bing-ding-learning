@@ -5,6 +5,14 @@
 :root {
   --font-display: 'Nunito', system-ui, sans-serif;
   --font-body: 'Nunito', system-ui, sans-serif;
+  
+  --color-lime: #58CC02;
+  --color-sky: #38bdf8;
+  --color-orange: #FF9F1C;
+  --color-sunny: #FFD93D;
+  --color-pink: #FF6B9D;
+  --color-coral: #FF6B6B;
+  --color-grape: #A855F7;
 }
 
 html {
@@ -13,8 +21,9 @@ html {
 }
 
 body {
-  @apply bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 min-h-screen;
+  @apply bg-white min-h-screen;
   font-family: var(--font-body);
+  overflow-x: hidden;
 }
 
 * {
@@ -33,6 +42,16 @@ textarea {
   -moz-user-select: text;
   -ms-user-select: text;
   user-select: text;
+}
+
+@layer components {
+  .shape-blob {
+    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+  }
+  
+  .shape-blob-alt {
+    border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+  }
 }
 
 @layer utilities {
@@ -60,5 +79,27 @@ textarea {
     100% {
       transform: scale(1);
     }
+  }
+  
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+  
+  .animate-float-delayed {
+    animation: float 6s ease-in-out infinite;
+    animation-delay: -3s;
+  }
+  
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-20px) rotate(5deg);
+    }
+  }
+  
+  .text-shadow-fun {
+    text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.1);
   }
 }
