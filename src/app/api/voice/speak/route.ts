@@ -52,7 +52,9 @@ export async function POST(request: NextRequest) {
     // Check cache first
     const cachedAudio = getFromCache(cacheKey);
     if (cachedAudio) {
-      return new NextResponse(cachedAudio, {
+      // Convert Buffer to Uint8Array for NextResponse compatibility
+      const uint8Array = new Uint8Array(cachedAudio);
+      return new NextResponse(uint8Array, {
         headers: {
           'Content-Type': 'audio/mpeg',
           'Content-Length': cachedAudio.byteLength.toString(),
