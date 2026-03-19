@@ -74,18 +74,17 @@ export function Celebration({ show, type, value, onComplete }: CelebrationProps)
       }
       setImageParticles(newImageParticles);
 
-      // Try to load the specific image, fallback to default
-      fetch(`/api/images`)
+      // Try to load the specific image
+      fetch(`/api/images?type=${type}&item=${type === 'letter' ? value.toUpperCase() : value}`)
         .then(res => res.json())
         .then(data => {
-          const items = type === 'letter' ? data.letters : data.numbers;
-          const item = items?.find((i: any) => i.item === (type === 'letter' ? value.toUpperCase() : value));
-          if (item?.images?.length > 0) {
-            setImageSrc(item.images[0].path);
+          if (data?.images?.length > 0) {
+            setImageSrc(data.images[0].path);
+          } else if (data?.selectedImage) {
+            setImageSrc(data.selectedImage);
           } else {
-            // Fallback to A or 1
-            const fallbackFolder = type === 'letter' ? 'alphabet/a' : 'numbers/1';
-            setImageSrc(`/images/generated/${fallbackFolder}/${type === 'letter' ? 'a' : '1'}_placeholder.png`);
+            // No image found, skip image animation
+            setImageSrc(null);
           }
         })
         .catch(() => {
