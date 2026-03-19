@@ -14,7 +14,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "generate:images": "tsx scripts/generate-images.ts",
     "generate:images:letters": "tsx scripts/generate-images.ts --letters",
-    "generate:images:numbers": "tsx scripts/generate-images.ts --numbers"
+    "generate:images:numbers": "tsx scripts/generate-images.ts --numbers",
+    "generate:backgrounds": "tsx scripts/generate-backgrounds.ts",
+    "trim:images": "python3 scripts/trim-images.py public/images/generated/"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.17.0",

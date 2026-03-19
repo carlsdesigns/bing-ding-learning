@@ -71,7 +71,7 @@ export default function PlaygroundPage() {
 
   if (!isImagesLoaded) {
     return (
-      <main className="h-screen flex flex-col items-center justify-center bg-stone-100">
+      <main className="h-screen flex flex-col items-center justify-center bg-gradient-to-b from-sky-100 to-stone-100">
         <motion.div
           animate={{ scale: [1, 1.1, 1] }}
           transition={{ duration: 1, repeat: Infinity }}
@@ -84,28 +84,31 @@ export default function PlaygroundPage() {
   }
 
   return (
-    <main className="h-screen flex flex-col overflow-hidden bg-stone-100">
-      {/* Canvas area - 80% of screen */}
-      <div className="flex-1 relative min-h-0">
+    <main className="h-screen flex flex-col overflow-hidden relative">
+      {/* Full-screen canvas with background */}
+      <div className="absolute inset-0 z-0">
         <PlaygroundCanvas />
-        
-        {/* Back button - top left */}
-        <Link href="/" className="absolute top-4 left-4 z-20">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-2 px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full shadow-md text-gray-600 font-medium hover:bg-white transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back
-          </motion.button>
-        </Link>
       </div>
+      
+      {/* Back button - top left */}
+      <Link href="/" className="absolute top-4 left-4 z-[300]">
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="flex items-center gap-2 px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full shadow-md text-gray-600 font-medium hover:bg-white transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          Back
+        </motion.button>
+      </Link>
 
-      {/* Keyboard area - max 20% of screen */}
-      <div className="flex-shrink-0">
+      {/* Spacer to push keyboard to bottom */}
+      <div className="flex-1 pointer-events-none" />
+
+      {/* Keyboard area - highest z-index (just below toolbar popups) */}
+      <div className="flex-shrink-0 relative z-[300]">
         <KeyboardBar />
       </div>
     </main>

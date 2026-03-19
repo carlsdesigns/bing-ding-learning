@@ -4,6 +4,7 @@ import * as path from 'path';
 
 const ALPHABET_DIR = path.join(process.cwd(), 'public', 'images', 'generated', 'alphabet');
 const NUMBERS_DIR = path.join(process.cwd(), 'public', 'images', 'generated', 'numbers');
+const BACKGROUNDS_DIR = path.join(process.cwd(), 'public', 'images', 'backgrounds');
 
 interface ImageInfo {
   filename: string;
@@ -14,14 +15,20 @@ interface ImageInfo {
 
 interface ItemImages {
   item: string;
-  type: 'letter' | 'number';
+  type: 'letter' | 'number' | 'background';
   word?: string;
   description?: string;
   images: ImageInfo[];
   selectedImage?: string;
 }
 
-function getImagesForItem(type: 'letter' | 'number', item: string): ImageInfo[] {
+const BACKGROUND_IDS = ['undersea', 'land', 'schoolyard', 'clouds', 'stars', 'frozen', 'desert'];
+
+function getImagesForItem(type: 'letter' | 'number' | 'background', item: string): ImageInfo[] {
+  if (type === 'background') {
+    return getBackgroundImages(item);
+  }
+  
   const baseDir = type === 'letter' ? ALPHABET_DIR : NUMBERS_DIR;
   const itemDir = path.join(baseDir, item.toLowerCase());
   
@@ -44,7 +51,38 @@ function getImagesForItem(type: 'letter' | 'number', item: string): ImageInfo[] 
   }).sort((a, b) => b.createdAt - a.createdAt);
 }
 
-function getSelectedImage(type: 'letter' | 'number', item: string): string | undefined {
+function getBackgroundImages(id: string): ImageInfo[] {
+  if (!fs.existsSync(BACKGROUNDS_DIR)) {
+    return [];
+  }
+  
+  const files = fs.readdirSync(BACKGROUNDS_DIR).filter(f => 
+    f.startsWith(`world_${id}`) && (f.endsWith('.jpg') || f.endsWith('.png'))
+  );
+  
+  return files.map(filename => {
+    const filepath = path.join(BACKGROUNDS_DIR, filename);
+    const stats = fs.statSync(filepath);
+    const publicPath = `/images/backgrounds/${filename}`;
+    
+    return {
+      filename,
+      path: publicPath,
+      createdAt: stats.mtimeMs,
+    };
+  }).sort((a, b) => b.createdAt - a.createdAt);
+}
+
+function getSelectedImage(type: 'letter' | 'number' | 'background', item: string): string | undefined {
+  if (type === 'background') {
+    const selectionFile = path.join(BACKGROUNDS_DIR, `.selected_${item}`);
+    if (fs.existsSync(selectionFile)) {
+      return fs.readFileSync(selectionFile, 'utf-8').trim();
+    }
+    const images = getBackgroundImages(item);
+    return images[0]?.path;
+  }
+  
   const baseDir = type === 'letter' ? ALPHABET_DIR : NUMBERS_DIR;
   const selectionFile = path.join(baseDir, item.toLowerCase(), '.selected');
   
@@ -59,7 +97,7 @@ function getSelectedImage(type: 'letter' | 'number', item: string): string | und
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const type = searchParams.get('type') as 'letter' | 'number' | null;
+  const type = searchParams.get('type') as 'letter' | 'number' | 'background' | null;
   const item = searchParams.get('item');
 
   if (item && type) {
@@ -90,7 +128,14 @@ export async function GET(request: NextRequest) {
     selectedImage: getSelectedImage('number', num),
   }));
 
-  return NextResponse.json({ letters, numbers });
+  const backgrounds = BACKGROUND_IDS.map(id => ({
+    item: id,
+    type: 'background' as const,
+    images: getBackgroundImages(id),
+    selectedImage: getSelectedImage('background', id),
+  }));
+
+  return NextResponse.json({ letters, numbers, backgrounds });
 }
 
 export async function POST(request: NextRequest) {
@@ -99,6 +144,15 @@ export async function POST(request: NextRequest) {
 
   if (!type || !item || !selectedImage) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
+
+  if (type === 'background') {
+    if (!fs.existsSync(BACKGROUNDS_DIR)) {
+      fs.mkdirSync(BACKGROUNDS_DIR, { recursive: true });
+    }
+    const selectionFile = path.join(BACKGROUNDS_DIR, `.selected_${item}`);
+    fs.writeFileSync(selectionFile, selectedImage);
+    return NextResponse.json({ success: true, selectedImage });
   }
 
   const baseDir = type === 'letter' ? ALPHABET_DIR : NUMBERS_DIR;
@@ -123,8 +177,8 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Missing path' }, { status: 400 });
   }
 
-  // Security: ensure path is within generated images
-  if (!imagePath.startsWith('/images/generated/')) {
+  // Security: ensure path is within allowed directories
+  if (!imagePath.startsWith('/images/generated/') && !imagePath.startsWith('/images/backgrounds/')) {
     return NextResponse.json({ error: 'Invalid path' }, { status: 400 });
   }
 

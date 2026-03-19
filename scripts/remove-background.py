@@ -140,6 +140,21 @@ def remove_magenta_background(input_path: str, tolerance: int = 60) -> None:
     # Save as PNG to preserve transparency
     result = Image.fromarray(data, 'RGBA')
     
+    # Trim transparent pixels to create tight bounding box
+    # Get the alpha channel and find non-transparent pixels
+    alpha = result.split()[3]
+    bbox = alpha.getbbox()
+    
+    if bbox:
+        # Add small padding (2px) to avoid cutting off anti-aliased edges
+        padding = 2
+        left = max(0, bbox[0] - padding)
+        top = max(0, bbox[1] - padding)
+        right = min(result.width, bbox[2] + padding)
+        bottom = min(result.height, bbox[3] + padding)
+        result = result.crop((left, top, right, bottom))
+        print(f"Trimmed from {width}x{height} to {result.width}x{result.height}")
+    
     # Change extension to .png if needed
     output_path = path.with_suffix('.png')
     result.save(output_path, 'PNG')

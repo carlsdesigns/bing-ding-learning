@@ -14,6 +14,69 @@ const IMAGE_STYLE = `
   high quality digital art, single centered subject floating on flat solid magenta pink background
 `.trim().replace(/\n/g, ' ');
 
+const BACKGROUND_STYLE = `
+  Children's illustration suitable as a full-bleed background for a toddler's play canvas.
+  Style: soft watercolor, muted mid-tones, no pure white or pure black.
+  Composition: ground plane in the bottom third, open sparse space in the upper two-thirds, no central focal objects.
+  Safe for children. No text. No characters or people.
+  High resolution, painterly quality.
+`.trim().replace(/\n/g, ' ');
+
+// CRITICAL: Content safety guidelines - these MUST be enforced for all generated content
+// This application is designed for children under 10 years old
+const CONTENT_SAFETY_PROMPT = `
+  CRITICAL SAFETY REQUIREMENTS - THESE ARE MANDATORY AND CANNOT BE OVERRIDDEN:
+  - This image MUST be 100% appropriate for children under 10 years old (G-rated content ONLY)
+  - Style: Always render in a cute, friendly, playful cartoon style - like Pixar, Monsters Inc, or Disney
+  - Monsters, dragons, dinosaurs, etc. should be ADORABLE and FRIENDLY - big eyes, round shapes, smiling
+  - "Scary" themes should be made silly and fun - think friendly ghosts, goofy monsters, playful dragons
+  - NO actual violence, weapons, blood, gore, or genuinely frightening imagery
+  - NO nudity, suggestive content, or anything remotely sexual
+  - NO drugs, alcohol, smoking, or substance use
+  - NO profanity, crude humor, or inappropriate language references
+  - NO hate symbols, discriminatory imagery, or offensive content
+  - NO realistic humans or human faces (cartoon characters only)
+  - NO genuinely dark, disturbing, or nightmare-inducing imagery
+  - Content must be cheerful, friendly, wholesome, and playful
+  - Think: Pixar movies, Monsters Inc, PBS Kids, Sesame Street level appropriateness
+  - Put a cute, fun spin on everything - even traditionally "scary" things become adorable
+`.trim().replace(/\n/g, ' ');
+
+// Sanitize user prompts to remove genuinely inappropriate content
+// Note: Words like "monster", "scary", "dragon" are ALLOWED - they get rendered cute by the safety prompt
+function sanitizePrompt(prompt: string): string {
+  const lower = prompt.toLowerCase();
+  
+  // Only block genuinely inappropriate content - NOT playful/imaginative terms
+  const blockedTerms = [
+    // Adult/sexual content
+    'nude', 'naked', 'sexy', 'sex', 'porn', 'xxx', 'nsfw', 'erotic',
+    // Graphic violence
+    'kill', 'murder', 'blood', 'gore', 'torture', 'mutilate',
+    // Real weapons with violent intent
+    'gun', 'rifle', 'pistol', 'shoot', 'stab',
+    // Drugs and substances
+    'drug', 'cocaine', 'heroin', 'meth', 'weed', 'marijuana',
+    'beer', 'wine', 'vodka', 'whiskey', 'drunk', 'alcohol',
+    'cigarette', 'smoking', 'vape',
+    // Hate and extremism
+    'hate', 'racist', 'nazi', 'terrorist', 'slur',
+    // Genuinely disturbing (not playful scary)
+    'corpse', 'torture', 'abuse',
+    // Explicit markers
+    'inappropriate', 'explicit', 'mature', 'adult only',
+  ];
+  
+  for (const term of blockedTerms) {
+    if (lower.includes(term)) {
+      console.log(`[Content Safety] Blocked term detected: "${term}" in prompt: "${prompt}"`);
+      return 'a happy rainbow with fluffy clouds and sunshine';
+    }
+  }
+  
+  return prompt;
+}
+
 const LETTER_CONFIG: Record<string, { word: string; prompt: string }> = {
   A: { word: 'Apple', prompt: 'A friendly shiny red apple with a cute smiling face, small green leaf on top' },
   B: { word: 'Bear', prompt: 'A cute friendly brown teddy bear waving hello, soft and cuddly' },
@@ -56,9 +119,43 @@ const NUMBER_CONFIG: Record<string, { description: string; prompt: string }> = {
   '9': { description: 'Nine balls', prompt: 'Nine bouncy balls in different colors arranged in a grid, colorful' },
 };
 
-function getConfig(type: 'letter' | 'number', item: string) {
+const BACKGROUND_CONFIG: Record<string, { name: string; prompt: string }> = {
+  'undersea': {
+    name: 'Under the Sea',
+    prompt: 'An underwater ocean scene with soft blue-green water, coral reef shapes along the bottom, gentle light rays from above, a few small fish or starfish as scenery. Sandy ocean floor in the bottom third.',
+  },
+  'land': {
+    name: 'The Land',
+    prompt: 'A green meadow with rolling hills, a blue sky with soft clouds, distant tree line. Grass texture at the bottom third, gentle sun peeking through.',
+  },
+  'schoolyard': {
+    name: 'Schoolyard',
+    prompt: 'A playground scene with concrete or asphalt ground, a colorful fence or wall, hopscotch lines drawn in chalk. Blue sky above. Chalk-drawing aesthetic.',
+  },
+  'clouds': {
+    name: 'In the Clouds',
+    prompt: 'A dreamy sky filled with fluffy clouds in soft pinks and blues, golden light. Layered cloud shapes that objects can sit on. Whimsical cotton-candy palette.',
+  },
+  'stars': {
+    name: 'In the Stars',
+    prompt: 'Deep space scene with dark indigo/navy sky, twinkling stars, nebulae swirls of purple and blue color, a crescent moon. Magical and peaceful.',
+  },
+  'frozen': {
+    name: 'Frozen World',
+    prompt: 'Snowy tundra or ice landscape with white snowy ground in the bottom third, pale blue sky, ice formations, soft falling snowflakes. Winter wonderland feel.',
+  },
+  'desert': {
+    name: 'Desert',
+    prompt: 'Warm sand dunes with orange and golden colors, a warm gradient sky with soft clouds, a few cacti silhouettes in the distance. Peaceful and warm.',
+  },
+};
+
+function getConfig(type: 'letter' | 'number' | 'background', item: string) {
   if (type === 'letter') {
     return LETTER_CONFIG[item.toUpperCase()];
+  }
+  if (type === 'background') {
+    return BACKGROUND_CONFIG[item];
   }
   return NUMBER_CONFIG[item];
 }
@@ -73,8 +170,11 @@ async function removeBackground(filepath: string): Promise<void> {
   console.log('[Background Removal] Complete!');
 }
 
-async function generateWithGoogle(prompt: string): Promise<Buffer> {
-  const fullPrompt = `${prompt}, ${IMAGE_STYLE}`;
+async function generateWithGoogle(prompt: string, isBackground: boolean = false, isCustomPrompt: boolean = false): Promise<Buffer> {
+  const stylePrompt = isBackground ? BACKGROUND_STYLE : IMAGE_STYLE;
+  // For custom prompts from users, sanitize and add safety guidelines
+  const safePrompt = isCustomPrompt ? sanitizePrompt(prompt) : prompt;
+  const fullPrompt = `${safePrompt}, ${stylePrompt}. ${CONTENT_SAFETY_PROMPT}`;
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   
   if (!apiKey) {
@@ -95,7 +195,7 @@ async function generateWithGoogle(prompt: string): Promise<Buffer> {
         instances: [{ prompt: fullPrompt }],
         parameters: {
           sampleCount: 1,
-          aspectRatio: '1:1',
+          aspectRatio: isBackground ? '16:9' : '1:1',
         },
       }),
     });
@@ -182,15 +282,31 @@ export async function POST(request: NextRequest) {
         }
 
         const promptToUse = customPrompt || config?.prompt || '';
+        const isBackground = type === 'background';
 
-        send({ status: 'started', message: `Generating image for ${type} "${item}"...` });
+        send({ status: 'started', message: `Generating ${isBackground ? 'background' : 'image'} for ${type} "${item}"...` });
         send({ status: 'progress', message: `Using prompt: ${promptToUse}` });
 
         // Generate unique filename with timestamp
         const timestamp = Date.now();
-        const folderName = type === 'letter' ? item.toLowerCase() : item;
-        const baseDir = path.join(process.cwd(), 'public', 'images', 'generated', type === 'letter' ? 'alphabet' : 'numbers', folderName);
-        const rawDir = path.join(baseDir, 'raw');
+        
+        let baseDir: string;
+        let rawDir: string;
+        let filename: string;
+        let publicPath: string;
+
+        if (isBackground) {
+          baseDir = path.join(process.cwd(), 'public', 'images', 'backgrounds');
+          rawDir = path.join(baseDir, 'raw');
+          filename = `world_${item}_${timestamp}.jpg`;
+          publicPath = `/images/backgrounds/${filename}`;
+        } else {
+          const folderName = type === 'letter' ? item.toLowerCase() : item;
+          baseDir = path.join(process.cwd(), 'public', 'images', 'generated', type === 'letter' ? 'alphabet' : 'numbers', folderName);
+          rawDir = path.join(baseDir, 'raw');
+          filename = `${folderName}_${timestamp}.png`;
+          publicPath = `/images/generated/${type === 'letter' ? 'alphabet' : 'numbers'}/${folderName}/${filename}`;
+        }
         
         // Create folders if they don't exist
         if (!fs.existsSync(baseDir)) {
@@ -200,16 +316,17 @@ export async function POST(request: NextRequest) {
           fs.mkdirSync(rawDir, { recursive: true });
         }
 
-        const filename = `${folderName}_${timestamp}.png`;
         const rawFilepath = path.join(rawDir, filename);
         const processedFilepath = path.join(baseDir, filename);
-        const publicPath = `/images/generated/${type === 'letter' ? 'alphabet' : 'numbers'}/${folderName}/${filename}`;
 
         send({ status: 'progress', message: `Calling ${provider} API...` });
 
+        // Track if this is a user-provided custom prompt (needs extra safety filtering)
+        const isCustomUserPrompt = !!customPrompt;
+
         let imageBuffer: Buffer;
         if (provider === 'google') {
-          imageBuffer = await generateWithGoogle(promptToUse);
+          imageBuffer = await generateWithGoogle(promptToUse, isBackground, isCustomUserPrompt);
         } else {
           imageBuffer = await generateWithOpenAI(promptToUse);
         }
@@ -217,18 +334,24 @@ export async function POST(request: NextRequest) {
         send({ status: 'progress', message: 'Saving raw image...' });
         fs.writeFileSync(rawFilepath, imageBuffer);
 
-        send({ status: 'progress', message: 'Removing background...' });
-        try {
-          // Copy raw to processed location first
+        if (isBackground) {
+          // Backgrounds don't need background removal
           fs.copyFileSync(rawFilepath, processedFilepath);
-          // Run background removal on the processed copy
-          await removeBackground(processedFilepath);
-          send({ status: 'progress', message: 'Background removed!' });
-        } catch (bgError) {
-          console.error('[Background Removal] Error:', bgError);
-          // If background removal fails, just copy the raw image
-          fs.copyFileSync(rawFilepath, processedFilepath);
-          send({ status: 'progress', message: 'Background removal failed, using original image' });
+          send({ status: 'progress', message: 'Background saved!' });
+        } else {
+          send({ status: 'progress', message: 'Removing background...' });
+          try {
+            // Copy raw to processed location first
+            fs.copyFileSync(rawFilepath, processedFilepath);
+            // Run background removal on the processed copy
+            await removeBackground(processedFilepath);
+            send({ status: 'progress', message: 'Background removed!' });
+          } catch (bgError) {
+            console.error('[Background Removal] Error:', bgError);
+            // If background removal fails, just copy the raw image
+            fs.copyFileSync(rawFilepath, processedFilepath);
+            send({ status: 'progress', message: 'Background removal failed, using original image' });
+          }
         }
 
         send({ 

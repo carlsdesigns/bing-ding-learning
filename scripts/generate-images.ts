@@ -7,11 +7,13 @@ import * as dotenv from 'dotenv';
 import { execSync } from 'child_process';
 import { 
   IMAGE_STYLE, 
+  BACKGROUND_STYLE,
   IMAGE_PROVIDER,
   DALLE_CONFIG, 
   IMAGEN_CONFIG,
   LETTER_CONFIG, 
-  NUMBER_CONFIG 
+  NUMBER_CONFIG,
+  BACKGROUND_CONFIG 
 } from './image-config';
 
 // Load environment variables from .env file
@@ -26,6 +28,7 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
 const OUTPUT_DIR = path.join(process.cwd(), 'public', 'images', 'generated');
 const LETTERS_DIR = path.join(OUTPUT_DIR, 'alphabet');
 const NUMBERS_DIR = path.join(OUTPUT_DIR, 'numbers');
+const BACKGROUNDS_DIR = path.join(process.cwd(), 'public', 'images', 'backgrounds');
 const SCRIPTS_DIR = path.join(process.cwd(), 'scripts');
 
 async function removeBackground(filepath: string): Promise<void> {
@@ -74,8 +77,9 @@ async function generateImageWithOpenAI(prompt: string, filepath: string): Promis
   await downloadImage(imageUrl, filepath);
 }
 
-async function generateImageWithGoogle(prompt: string, filepath: string): Promise<void> {
-  const fullPrompt = `${prompt}, ${IMAGE_STYLE}`;
+async function generateImageWithGoogle(prompt: string, filepath: string, isBackground: boolean = false): Promise<void> {
+  const stylePrompt = isBackground ? BACKGROUND_STYLE : IMAGE_STYLE;
+  const fullPrompt = `${prompt}, ${stylePrompt}`;
   
   // Using Imagen 4 via predict endpoint
   const response = await fetch(
@@ -89,7 +93,7 @@ async function generateImageWithGoogle(prompt: string, filepath: string): Promis
         instances: [{ prompt: fullPrompt }],
         parameters: {
           sampleCount: 1,
-          aspectRatio: '1:1',
+          aspectRatio: isBackground ? '16:9' : '1:1',
         },
       }),
     }
@@ -186,6 +190,47 @@ async function generateNumberImages(): Promise<void> {
   }
 }
 
+async function generateBackgroundImage(prompt: string, filename: string): Promise<string> {
+  const filepath = path.join(BACKGROUNDS_DIR, filename);
+  
+  if (fs.existsSync(filepath)) {
+    console.log(`  ⏭️  Skipping ${filename} (already exists)`);
+    return filepath;
+  }
+
+  console.log(`  🎨 Generating: ${filename} (using ${IMAGE_PROVIDER})...`);
+  
+  try {
+    if (IMAGE_PROVIDER === 'google') {
+      await generateImageWithGoogle(prompt, filepath, true);
+    } else {
+      await generateImageWithOpenAI(prompt, filepath);
+    }
+
+    console.log(`  ✅ Saved: ${filename}`);
+    
+    // Rate limit: wait between requests
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    return filepath;
+  } catch (error) {
+    console.error(`  ❌ Failed: ${filename}`, error);
+    throw error;
+  }
+}
+
+async function generateBackgroundImages(): Promise<void> {
+  console.log('\n🌍 Generating world backgrounds...\n');
+  
+  if (!fs.existsSync(BACKGROUNDS_DIR)) {
+    fs.mkdirSync(BACKGROUNDS_DIR, { recursive: true });
+  }
+
+  for (const [id, config] of Object.entries(BACKGROUND_CONFIG)) {
+    await generateBackgroundImage(config.prompt, `world_${id}.jpg`);
+  }
+}
+
 async function generateManifest(): Promise<void> {
   const manifest = {
     generatedAt: new Date().toISOString(),
@@ -211,16 +256,23 @@ async function generateManifest(): Promise<void> {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const generateLetters = args.includes('--letters') || args.includes('--all') || args.length === 0;
-  const generateNumbers = args.includes('--numbers') || args.includes('--all') || args.length === 0;
+  const hasSpecificFlags = args.includes('--letters') || args.includes('--numbers') || args.includes('--backgrounds');
+  const generateLetters = args.includes('--letters') || args.includes('--all') || (!hasSpecificFlags && args.length === 0);
+  const generateNumbers = args.includes('--numbers') || args.includes('--all') || (!hasSpecificFlags && args.length === 0);
+  const generateBackgrounds = args.includes('--backgrounds') || args.includes('--all');
   const single = args.find(a => a.startsWith('--single='));
+  const singleBg = args.find(a => a.startsWith('--background='));
 
   console.log('🖼️  Bing Ding Learning - Image Generator\n');
   console.log('=========================================');
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (IMAGE_PROVIDER === 'google' && !process.env.GOOGLE_AI_API_KEY) {
+    console.error('❌ GOOGLE_AI_API_KEY environment variable is required');
+    process.exit(1);
+  }
+  
+  if (IMAGE_PROVIDER === 'openai' && !process.env.OPENAI_API_KEY) {
     console.error('❌ OPENAI_API_KEY environment variable is required');
-    console.log('\nRun with: OPENAI_API_KEY=your-key npx tsx scripts/generate-images.ts');
     process.exit(1);
   }
 
@@ -228,7 +280,19 @@ async function main(): Promise<void> {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   }
 
-  if (single) {
+  if (singleBg) {
+    const bgId = singleBg.split('=')[1].toLowerCase();
+    if (BACKGROUND_CONFIG[bgId]) {
+      if (!fs.existsSync(BACKGROUNDS_DIR)) {
+        fs.mkdirSync(BACKGROUNDS_DIR, { recursive: true });
+      }
+      await generateBackgroundImage(BACKGROUND_CONFIG[bgId].prompt, `world_${bgId}.jpg`);
+    } else {
+      console.error(`❌ Unknown background: ${bgId}`);
+      console.log('Available backgrounds:', Object.keys(BACKGROUND_CONFIG).join(', '));
+      process.exit(1);
+    }
+  } else if (single) {
     const item = single.split('=')[1].toUpperCase();
     if (LETTER_CONFIG[item]) {
       if (!fs.existsSync(LETTERS_DIR)) {
@@ -247,13 +311,15 @@ async function main(): Promise<void> {
   } else {
     if (generateLetters) await generateLetterImages();
     if (generateNumbers) await generateNumberImages();
+    if (generateBackgrounds) await generateBackgroundImages();
   }
 
-  await generateManifest();
+  if (generateLetters || generateNumbers) {
+    await generateManifest();
+  }
 
   console.log('\n✨ Done!\n');
-  console.log('Images saved to: public/generated/');
-  console.log('Use in app with: /generated/letters/a.png, /generated/numbers/1.png');
+  console.log('Images saved to: public/images/generated/ and public/images/backgrounds/');
 }
 
 main().catch(console.error);

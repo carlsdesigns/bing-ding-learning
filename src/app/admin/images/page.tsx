@@ -15,7 +15,7 @@ interface ImageInfo {
 
 interface ItemData {
   item: string;
-  type: 'letter' | 'number';
+  type: 'letter' | 'number' | 'background';
   images: ImageInfo[];
   selectedImage?: string;
 }
@@ -23,15 +23,27 @@ interface ItemData {
 interface PromptConfig {
   letters: Record<string, { word: string; prompt: string }>;
   numbers: Record<string, { description: string; prompt: string }>;
+  backgrounds: Record<string, { name: string; prompt: string }>;
 }
 
-type Tab = 'letters' | 'numbers';
+const BACKGROUND_NAMES: Record<string, string> = {
+  undersea: 'Under the Sea',
+  land: 'The Land',
+  schoolyard: 'Schoolyard',
+  clouds: 'In the Clouds',
+  stars: 'In the Stars',
+  frozen: 'Frozen World',
+  desert: 'Desert',
+};
+
+type Tab = 'letters' | 'numbers' | 'backgrounds';
 type Provider = 'google' | 'openai';
 
 export default function ImageManagerPage() {
   const [tab, setTab] = useState<Tab>('letters');
   const [letters, setLetters] = useState<ItemData[]>([]);
   const [numbers, setNumbers] = useState<ItemData[]>([]);
+  const [backgrounds, setBackgrounds] = useState<ItemData[]>([]);
   const [selectedItem, setSelectedItem] = useState<ItemData | null>(null);
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState<string[]>([]);
@@ -49,9 +61,14 @@ export default function ImageManagerPage() {
 
   useEffect(() => {
     if (selectedItem && prompts) {
-      const config = selectedItem.type === 'letter' 
-        ? prompts.letters[selectedItem.item.toUpperCase()]
-        : prompts.numbers[selectedItem.item];
+      let config;
+      if (selectedItem.type === 'letter') {
+        config = prompts.letters[selectedItem.item.toUpperCase()];
+      } else if (selectedItem.type === 'number') {
+        config = prompts.numbers[selectedItem.item];
+      } else {
+        config = prompts.backgrounds[selectedItem.item];
+      }
       if (config) {
         setEditedPrompt(config.prompt);
         setIsEditingPrompt(false);
@@ -64,6 +81,7 @@ export default function ImageManagerPage() {
     const data = await response.json();
     setLetters(data.letters);
     setNumbers(data.numbers);
+    setBackgrounds(data.backgrounds || []);
   };
 
   const fetchPrompts = async () => {
@@ -96,7 +114,7 @@ export default function ImageManagerPage() {
     }
   };
 
-  const generateImage = async (type: 'letter' | 'number', item: string) => {
+  const generateImage = async (type: 'letter' | 'number' | 'background', item: string) => {
     setGenerating(true);
     setProgress([]);
     setNewImage(null);
@@ -150,7 +168,7 @@ export default function ImageManagerPage() {
     }
   };
 
-  const selectImage = async (type: 'letter' | 'number', item: string, imagePath: string) => {
+  const selectImage = async (type: 'letter' | 'number' | 'background', item: string, imagePath: string) => {
     await fetch('/api/images', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -175,7 +193,7 @@ export default function ImageManagerPage() {
     }
   };
 
-  const items = tab === 'letters' ? letters : numbers;
+  const items = tab === 'letters' ? letters : tab === 'numbers' ? numbers : backgrounds;
 
   return (
     <main className="min-h-screen p-6 bg-gray-50">
@@ -207,17 +225,24 @@ export default function ImageManagerPage() {
         <div className="flex gap-4 mb-6">
           <Button
             variant={tab === 'letters' ? 'default' : 'outline'}
-            onClick={() => setTab('letters')}
+            onClick={() => { setTab('letters'); setSelectedItem(null); }}
             size="lg"
           >
             Alphabet (A-Z)
           </Button>
           <Button
             variant={tab === 'numbers' ? 'default' : 'outline'}
-            onClick={() => setTab('numbers')}
+            onClick={() => { setTab('numbers'); setSelectedItem(null); }}
             size="lg"
           >
             Numbers (0-9)
+          </Button>
+          <Button
+            variant={tab === 'backgrounds' ? 'default' : 'outline'}
+            onClick={() => { setTab('backgrounds'); setSelectedItem(null); }}
+            size="lg"
+          >
+            Backgrounds 🌍
           </Button>
         </div>
 
@@ -225,10 +250,16 @@ export default function ImageManagerPage() {
           {/* Item Grid */}
           <Card>
             <CardHeader>
-              <CardTitle>Select {tab === 'letters' ? 'Letter' : 'Number'}</CardTitle>
+              <CardTitle>
+                Select {tab === 'letters' ? 'Letter' : tab === 'numbers' ? 'Number' : 'Background'}
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className={`grid gap-3 ${tab === 'letters' ? 'grid-cols-6' : 'grid-cols-5'}`}>
+              <div className={`grid gap-3 ${
+                tab === 'letters' ? 'grid-cols-6' : 
+                tab === 'numbers' ? 'grid-cols-5' : 
+                'grid-cols-2'
+              }`}>
                 {items.map((item) => (
                   <motion.button
                     key={item.item}
@@ -236,8 +267,9 @@ export default function ImageManagerPage() {
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setSelectedItem(item)}
                     className={`
-                      relative aspect-square rounded-xl text-2xl font-bold
+                      relative rounded-xl font-bold
                       flex items-center justify-center transition-all
+                      ${tab === 'backgrounds' ? 'aspect-video text-sm p-3' : 'aspect-square text-2xl'}
                       ${selectedItem?.item === item.item
                         ? 'bg-primary-500 text-white ring-4 ring-primary-300'
                         : item.images.length > 0
@@ -246,7 +278,7 @@ export default function ImageManagerPage() {
                       }
                     `}
                   >
-                    {item.item}
+                    {tab === 'backgrounds' ? BACKGROUND_NAMES[item.item] || item.item : item.item}
                     {item.images.length > 0 && (
                       <span className="absolute -top-1 -right-1 bg-green-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
                         {item.images.length}
@@ -263,7 +295,9 @@ export default function ImageManagerPage() {
             <CardHeader>
               <CardTitle>
                 {selectedItem 
-                  ? `${selectedItem.type === 'letter' ? 'Letter' : 'Number'} "${selectedItem.item}"` 
+                  ? selectedItem.type === 'background'
+                    ? `Background: ${BACKGROUND_NAMES[selectedItem.item] || selectedItem.item}`
+                    : `${selectedItem.type === 'letter' ? 'Letter' : 'Number'} "${selectedItem.item}"` 
                   : 'Select an item'}
               </CardTitle>
             </CardHeader>
@@ -274,7 +308,7 @@ export default function ImageManagerPage() {
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <label className="text-sm font-medium text-gray-700">
-                        Prompt for "{selectedItem.item}"
+                        Prompt for "{selectedItem.type === 'background' ? BACKGROUND_NAMES[selectedItem.item] : selectedItem.item}"
                         {selectedItem.type === 'letter' && prompts?.letters[selectedItem.item.toUpperCase()] && (
                           <span className="text-gray-500 ml-2">
                             ({prompts.letters[selectedItem.item.toUpperCase()].word})
@@ -333,7 +367,12 @@ export default function ImageManagerPage() {
                     className="w-full"
                     size="lg"
                   >
-                    {generating ? 'Generating...' : `Generate New Image for "${selectedItem.item}"`}
+                    {generating 
+                      ? 'Generating...' 
+                      : selectedItem.type === 'background'
+                        ? `Generate New Background: ${BACKGROUND_NAMES[selectedItem.item]}`
+                        : `Generate New Image for "${selectedItem.item}"`
+                    }
                   </Button>
 
                   {/* Progress Log */}

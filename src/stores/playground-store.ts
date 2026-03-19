@@ -12,6 +12,32 @@ interface CanvasObject {
   zIndex: number;
 }
 
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface Stroke {
+  id: string;
+  points: Point[];
+  color: string;
+  tool: 'pen' | 'highlighter';
+  width: number;
+}
+
+type DrawingTool = 'none' | 'pen' | 'highlighter';
+
+const RAINBOW_COLORS = [
+  '#EF4444', // Red
+  '#F97316', // Orange
+  '#EAB308', // Yellow
+  '#22C55E', // Green
+  '#3B82F6', // Blue
+  '#8B5CF6', // Purple
+  '#78716C', // Brown
+  '#171717', // Black
+];
+
 interface PlaygroundState {
   canvasObjects: CanvasObject[];
   isSoundEnabled: boolean;
@@ -25,6 +51,15 @@ interface PlaygroundState {
   numberWords: Record<string, string>;
   maxZIndex: number;
   canvasSize: { width: number; height: number };
+  // Drawing state
+  activeTool: DrawingTool;
+  currentColor: string;
+  penStrokes: Stroke[];
+  highlighterStrokes: Stroke[];
+  currentStroke: Stroke | null;
+  // Background state
+  currentBackground: string | null;
+  availableBackgrounds: string[];
 }
 
 interface PlaygroundActions {
@@ -40,10 +75,37 @@ interface PlaygroundActions {
   setTtsState: (state: 'idle' | 'speaking') => void;
   setCurrentUtterance: (key: string | null) => void;
   setCanvasSize: (width: number, height: number) => void;
+  // Drawing actions
+  setActiveTool: (tool: DrawingTool) => void;
+  setCurrentColor: (color: string) => void;
+  startStroke: (point: Point) => void;
+  addPointToStroke: (point: Point) => void;
+  endStroke: () => void;
+  // Background actions
+  setBackground: (background: string | null) => void;
+  loadBackgrounds: () => Promise<void>;
 }
+
+export { RAINBOW_COLORS };
+export type { Stroke, Point, DrawingTool };
 
 const MAX_OBJECTS = 300;
 const SPAWN_SIZE_PERCENT = 0.10; // 10% of screen width
+
+// Default world backgrounds (excluding blank)
+const DEFAULT_BACKGROUNDS = [
+  '/images/backgrounds/world_undersea.jpg',
+  '/images/backgrounds/world_land.jpg',
+  '/images/backgrounds/world_schoolyard.jpg',
+  '/images/backgrounds/world_clouds.jpg',
+  '/images/backgrounds/world_stars.jpg',
+  '/images/backgrounds/world_frozen.jpg',
+  '/images/backgrounds/world_desert.jpg',
+];
+
+function getRandomBackground(): string {
+  return DEFAULT_BACKGROUNDS[Math.floor(Math.random() * DEFAULT_BACKGROUNDS.length)];
+}
 
 export const usePlaygroundStore = create<PlaygroundState & PlaygroundActions>((set, get) => ({
   canvasObjects: [],
@@ -58,6 +120,15 @@ export const usePlaygroundStore = create<PlaygroundState & PlaygroundActions>((s
   numberWords: {},
   maxZIndex: 0,
   canvasSize: { width: 800, height: 600 },
+  // Drawing state
+  activeTool: 'none',
+  currentColor: RAINBOW_COLORS[0],
+  penStrokes: [],
+  highlighterStrokes: [],
+  currentStroke: null,
+  // Background state - start with a random background
+  currentBackground: getRandomBackground(),
+  availableBackgrounds: [],
 
   preloadImages: async () => {
     try {
@@ -205,7 +276,13 @@ export const usePlaygroundStore = create<PlaygroundState & PlaygroundActions>((s
   },
 
   clearCanvas: () => {
-    set({ canvasObjects: [], maxZIndex: 0 });
+    set({ 
+      canvasObjects: [], 
+      maxZIndex: 0,
+      penStrokes: [],
+      highlighterStrokes: [],
+      currentStroke: null,
+    });
   },
 
   toggleSound: () => {
@@ -228,5 +305,79 @@ export const usePlaygroundStore = create<PlaygroundState & PlaygroundActions>((s
 
   setCanvasSize: (width: number, height: number) => {
     set({ canvasSize: { width, height } });
+  },
+
+  // Drawing actions
+  setActiveTool: (tool: DrawingTool) => {
+    set({ activeTool: tool });
+  },
+
+  setCurrentColor: (color: string) => {
+    set({ currentColor: color });
+  },
+
+  startStroke: (point: Point) => {
+    const state = get();
+    if (state.activeTool === 'none') return;
+    
+    const newStroke: Stroke = {
+      id: `stroke-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      points: [point],
+      color: state.currentColor,
+      tool: state.activeTool,
+      width: state.activeTool === 'pen' ? 5 : 25,
+    };
+    
+    set({ currentStroke: newStroke });
+  },
+
+  addPointToStroke: (point: Point) => {
+    const state = get();
+    if (!state.currentStroke) return;
+    
+    set({
+      currentStroke: {
+        ...state.currentStroke,
+        points: [...state.currentStroke.points, point],
+      },
+    });
+  },
+
+  endStroke: () => {
+    const state = get();
+    if (!state.currentStroke) return;
+    
+    if (state.currentStroke.points.length > 1) {
+      if (state.currentStroke.tool === 'pen') {
+        set({
+          penStrokes: [...state.penStrokes, state.currentStroke],
+          currentStroke: null,
+        });
+      } else {
+        set({
+          highlighterStrokes: [...state.highlighterStrokes, state.currentStroke],
+          currentStroke: null,
+        });
+      }
+    } else {
+      set({ currentStroke: null });
+    }
+  },
+
+  // Background actions
+  setBackground: (background: string | null) => {
+    set({ currentBackground: background });
+  },
+
+  loadBackgrounds: async () => {
+    try {
+      const response = await fetch('/api/backgrounds');
+      if (response.ok) {
+        const data = await response.json();
+        set({ availableBackgrounds: data.backgrounds || [] });
+      }
+    } catch (error) {
+      console.error('Failed to load backgrounds:', error);
+    }
   },
 }));

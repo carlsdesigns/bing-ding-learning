@@ -220,3 +220,56 @@ export const NUMBER_CONFIG: Record<string, { description: string; prompt: string
     prompt: 'a Tadpole in the shape of a 9' 
   },
 };
+
+/**
+ * BACKGROUND STYLE PROMPT
+ * -----------------------
+ * Style guidelines for world backgrounds (no background removal needed)
+ */
+export const BACKGROUND_STYLE = `
+  Children's illustration suitable as a full-bleed background for a toddler's play canvas.
+  Style: soft watercolor, muted mid-tones, no pure white or pure black.
+  Composition: ground plane in the bottom third, open sparse space in the upper two-thirds, no central focal objects.
+  Safe for children. No text. No characters or people.
+  High resolution, painterly quality.
+`.trim().replace(/\n/g, ' ');
+
+/**
+ * WORLD BACKGROUNDS
+ * -----------------
+ * Pre-created world backgrounds for the Playground feature.
+ * These are full-bleed images without background removal.
+ * 
+ * Format:
+ *   'id': { name: 'Display Name', prompt: 'Scene description' }
+ */
+export const BACKGROUND_CONFIG: Record<string, { name: string; prompt: string }> = {
+  'undersea': {
+    name: 'Under the Sea',
+    prompt: 'An underwater ocean scene with soft blue-green water, coral reef shapes along the bottom, gentle light rays from above, a few small fish or starfish as scenery. Sandy ocean floor in the bottom third.',
+  },
+  'land': {
+    name: 'The Land',
+    prompt: 'A green meadow with rolling hills, a blue sky with soft clouds, distant tree line. Grass texture at the bottom third, gentle sun peeking through.',
+  },
+  'schoolyard': {
+    name: 'Schoolyard',
+    prompt: 'A playground scene with concrete or asphalt ground, a colorful fence or wall, hopscotch lines drawn in chalk. Blue sky above. Chalk-drawing aesthetic.',
+  },
+  'clouds': {
+    name: 'In the Clouds',
+    prompt: 'A dreamy sky filled with fluffy clouds in soft pinks and blues, golden light. Layered cloud shapes that objects can sit on. Whimsical cotton-candy palette.',
+  },
+  'stars': {
+    name: 'In the Stars',
+    prompt: 'Deep space scene with dark indigo/navy sky, twinkling stars, nebulae swirls of purple and blue color, a crescent moon. Magical and peaceful.',
+  },
+  'frozen': {
+    name: 'Frozen World',
+    prompt: 'Snowy tundra or ice landscape with white snowy ground in the bottom third, pale blue sky, ice formations, soft falling snowflakes. Winter wonderland feel.',
+  },
+  'desert': {
+    name: 'Desert',
+    prompt: 'Warm sand dunes with orange and golden colors, a warm gradient sky with soft clouds, a few cacti silhouettes in the distance. Peaceful and warm.',
+  },
+};
