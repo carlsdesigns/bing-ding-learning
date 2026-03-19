@@ -7,6 +7,7 @@ import { TouchButton } from '@/components/touch/touch-button';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Celebration } from '@/components/celebration';
 import { useVoice, useAI, useSession } from '@/hooks';
 import { useLearningStore } from '@/stores';
 
@@ -95,13 +96,17 @@ export default function AlphabetPage() {
         speak(`${currentLetter} is for ${WORDS[currentLetter!]}!`);
       }
 
-      await recordActivity({
-        activityType: mode,
-        target: currentLetter!,
-        correct: true,
-        attempts,
-        voicePlayed: voiceEnabled,
-      });
+      try {
+        await recordActivity({
+          activityType: mode,
+          target: currentLetter!,
+          correct: true,
+          attempts,
+          voicePlayed: voiceEnabled,
+        });
+      } catch {
+        // Session recording is optional
+      }
 
       setTimeout(() => {
         setShowCelebration(false);
@@ -139,6 +144,11 @@ export default function AlphabetPage() {
 
   return (
     <main className="min-h-screen p-6">
+      <Celebration 
+        show={showCelebration} 
+        type="letter" 
+        value={currentLetter || 'A'} 
+      />
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <Link href="/">

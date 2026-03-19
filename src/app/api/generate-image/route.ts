@@ -4,12 +4,14 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 
 const IMAGE_STYLE = `
-  cute, friendly, cartoon style illustration for children,
-  soft pastel colors, simple rounded shapes,
-  educational, cheerful, welcoming,
-  clean white background,
-  no text or letters in the image,
-  high quality, digital art
+  cute friendly cartoon illustration for children,
+  flat vector art style with clean sharp edges,
+  simple rounded shapes with soft pastel colors,
+  educational cheerful welcoming mood,
+  CRITICAL: background must be 100% pure chroma key green screen green (RGB 0, 255, 0) - the exact bright neon green used in video production green screens - completely flat uniform solid color with absolutely no variation shading or texture,
+  the subject has a thick pure white border outline around it like a die-cut sticker,
+  no shadows, no gradients, no text or letters,
+  high quality digital art, single centered subject floating on perfectly flat solid chroma key green background
 `.trim().replace(/\n/g, ' ');
 
 const LETTER_CONFIG: Record<string, { word: string; prompt: string }> = {
@@ -188,14 +190,19 @@ export async function POST(request: NextRequest) {
         const timestamp = Date.now();
         const folderName = type === 'letter' ? item.toLowerCase() : item;
         const baseDir = path.join(process.cwd(), 'public', 'images', 'generated', type === 'letter' ? 'alphabet' : 'numbers', folderName);
+        const rawDir = path.join(baseDir, 'raw');
         
-        // Create folder if it doesn't exist
+        // Create folders if they don't exist
         if (!fs.existsSync(baseDir)) {
           fs.mkdirSync(baseDir, { recursive: true });
         }
+        if (!fs.existsSync(rawDir)) {
+          fs.mkdirSync(rawDir, { recursive: true });
+        }
 
         const filename = `${folderName}_${timestamp}.png`;
-        const filepath = path.join(baseDir, filename);
+        const rawFilepath = path.join(rawDir, filename);
+        const processedFilepath = path.join(baseDir, filename);
         const publicPath = `/images/generated/${type === 'letter' ? 'alphabet' : 'numbers'}/${folderName}/${filename}`;
 
         send({ status: 'progress', message: `Calling ${provider} API...` });
@@ -207,15 +214,20 @@ export async function POST(request: NextRequest) {
           imageBuffer = await generateWithOpenAI(promptToUse);
         }
 
-        send({ status: 'progress', message: 'Saving image...' });
-        fs.writeFileSync(filepath, imageBuffer);
+        send({ status: 'progress', message: 'Saving raw image...' });
+        fs.writeFileSync(rawFilepath, imageBuffer);
 
         send({ status: 'progress', message: 'Removing background...' });
         try {
-          await removeBackground(filepath);
+          // Copy raw to processed location first
+          fs.copyFileSync(rawFilepath, processedFilepath);
+          // Run background removal on the processed copy
+          await removeBackground(processedFilepath);
           send({ status: 'progress', message: 'Background removed!' });
         } catch (bgError) {
           console.error('[Background Removal] Error:', bgError);
+          // If background removal fails, just copy the raw image
+          fs.copyFileSync(rawFilepath, processedFilepath);
           send({ status: 'progress', message: 'Background removal failed, using original image' });
         }
 

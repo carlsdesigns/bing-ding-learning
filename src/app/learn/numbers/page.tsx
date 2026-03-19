@@ -7,6 +7,7 @@ import { TouchButton } from '@/components/touch/touch-button';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Celebration } from '@/components/celebration';
 import { useVoice, useAI, useSession } from '@/hooks';
 import { useLearningStore } from '@/stores';
 
@@ -71,17 +72,25 @@ export default function NumbersPage() {
       setFeedback('Great job! 🎉');
 
       if (voiceEnabled) {
-        const message = await getEncouragement(true);
-        speak(message);
+        try {
+          const message = await getEncouragement(true);
+          speak(message);
+        } catch {
+          speak('Great job!');
+        }
       }
 
-      await recordActivity({
-        activityType: 'recognition',
-        target: currentNumber!.toString(),
-        correct: true,
-        attempts,
-        voicePlayed: voiceEnabled,
-      });
+      try {
+        await recordActivity({
+          activityType: 'recognition',
+          target: currentNumber!.toString(),
+          correct: true,
+          attempts,
+          voicePlayed: voiceEnabled,
+        });
+      } catch {
+        // Session recording is optional
+      }
 
       setTimeout(() => {
         setShowCelebration(false);
@@ -119,6 +128,11 @@ export default function NumbersPage() {
 
   return (
     <main className="min-h-screen p-6">
+      <Celebration 
+        show={showCelebration} 
+        type="number" 
+        value={currentNumber?.toString() || '1'} 
+      />
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <Link href="/">

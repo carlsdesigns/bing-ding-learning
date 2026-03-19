@@ -19,9 +19,9 @@ export const IMAGE_STYLE = `
   flat vector art style with clean sharp edges,
   simple rounded shapes with soft pastel colors,
   educational cheerful welcoming mood,
-  isolated on a solid #00FF00 background,
+  CRITICAL: background must be 100% pure chroma key green screen green (RGB 0, 255, 0) - the exact bright neon green used in video production green screens - completely flat uniform solid color with absolutely no variation shading or texture,
+  the subject has a thick pure white border outline around it like a die-cut sticker,
   no shadows, no gradients, no text or letters,
-  high quality digital art, die-cut sticker with 8px #ffffff border aesthetic
 `.trim().replace(/\n/g, ' ');
 
 /**
@@ -184,11 +184,11 @@ export const NUMBER_CONFIG: Record<string, { description: string; prompt: string
   },
   '1': { 
     description: 'One balloon', 
-    prompt: 'One single red balloon floating, with a curly string' 
+    prompt: 'One single red balloon, in the shape of a number 1 floating, with a curly string' 
   },
   '2': { 
     description: 'Two kittens', 
-    prompt: 'Two adorable kittens sitting side by side, one orange one grey' 
+    prompt: 'A cat in the shape of a number 2, orange and grey' 
   },
   '3': { 
     description: 'Three butterflies', 

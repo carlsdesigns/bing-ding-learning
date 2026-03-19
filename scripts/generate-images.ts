@@ -122,30 +122,40 @@ async function generateImageWithGoogle(prompt: string, filepath: string): Promis
 }
 
 async function generateImage(prompt: string, filename: string, outputDir: string): Promise<string> {
-  const filepath = path.join(outputDir, filename);
+  const processedFilepath = path.join(outputDir, filename);
+  const rawDir = path.join(outputDir, 'raw');
+  const rawFilepath = path.join(rawDir, filename);
   
-  if (fs.existsSync(filepath)) {
+  if (fs.existsSync(processedFilepath)) {
     console.log(`  ⏭️  Skipping ${filename} (already exists)`);
-    return filepath;
+    return processedFilepath;
+  }
+
+  // Create raw folder if it doesn't exist
+  if (!fs.existsSync(rawDir)) {
+    fs.mkdirSync(rawDir, { recursive: true });
   }
 
   console.log(`  🎨 Generating: ${filename} (using ${IMAGE_PROVIDER})...`);
   
   try {
+    // Generate and save to raw folder first
     if (IMAGE_PROVIDER === 'google') {
-      await generateImageWithGoogle(prompt, filepath);
+      await generateImageWithGoogle(prompt, rawFilepath);
     } else {
-      await generateImageWithOpenAI(prompt, filepath);
+      await generateImageWithOpenAI(prompt, rawFilepath);
     }
 
-    console.log(`  ✅ Saved: ${filename}`);
+    console.log(`  ✅ Saved raw: ${filename}`);
     
-    await removeBackground(filepath);
+    // Copy to processed location and remove background
+    fs.copyFileSync(rawFilepath, processedFilepath);
+    await removeBackground(processedFilepath);
     
     // Rate limit: wait between requests
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    return filepath;
+    return processedFilepath;
   } catch (error) {
     console.error(`  ❌ Failed: ${filename}`, error);
     throw error;
