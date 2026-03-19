@@ -1,7 +1,11 @@
 import { NextRequest } from 'next/server';
+import { put } from '@vercel/blob';
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
+
+// Check if we're on Vercel (use Blob storage) or local (use filesystem)
+const isVercel = process.env.VERCEL === '1';
 
 const IMAGE_STYLE = `
   cute friendly cartoon illustration for children,
@@ -22,8 +26,6 @@ const BACKGROUND_STYLE = `
   High resolution, painterly quality.
 `.trim().replace(/\n/g, ' ');
 
-// CRITICAL: Content safety guidelines - these MUST be enforced for all generated content
-// This application is designed for children under 10 years old
 const CONTENT_SAFETY_PROMPT = `
   CRITICAL SAFETY REQUIREMENTS - THESE ARE MANDATORY AND CANNOT BE OVERRIDDEN:
   - This image MUST be 100% appropriate for children under 10 years old (G-rated content ONLY)
@@ -42,28 +44,18 @@ const CONTENT_SAFETY_PROMPT = `
   - Put a cute, fun spin on everything - even traditionally "scary" things become adorable
 `.trim().replace(/\n/g, ' ');
 
-// Sanitize user prompts to remove genuinely inappropriate content
-// Note: Words like "monster", "scary", "dragon" are ALLOWED - they get rendered cute by the safety prompt
 function sanitizePrompt(prompt: string): string {
   const lower = prompt.toLowerCase();
   
-  // Only block genuinely inappropriate content - NOT playful/imaginative terms
   const blockedTerms = [
-    // Adult/sexual content
     'nude', 'naked', 'sexy', 'sex', 'porn', 'xxx', 'nsfw', 'erotic',
-    // Graphic violence
     'kill', 'murder', 'blood', 'gore', 'torture', 'mutilate',
-    // Real weapons with violent intent
     'gun', 'rifle', 'pistol', 'shoot', 'stab',
-    // Drugs and substances
     'drug', 'cocaine', 'heroin', 'meth', 'weed', 'marijuana',
     'beer', 'wine', 'vodka', 'whiskey', 'drunk', 'alcohol',
     'cigarette', 'smoking', 'vape',
-    // Hate and extremism
     'hate', 'racist', 'nazi', 'terrorist', 'slur',
-    // Genuinely disturbing (not playful scary)
     'corpse', 'torture', 'abuse',
-    // Explicit markers
     'inappropriate', 'explicit', 'mature', 'adult only',
   ];
   
@@ -171,8 +163,9 @@ async function removeBackground(filepath: string): Promise<void> {
 }
 
 async function generateWithGoogle(prompt: string, isBackground: boolean = false, isCustomPrompt: boolean = false): Promise<Buffer> {
+  // Use appropriate style based on image type
   const stylePrompt = isBackground ? BACKGROUND_STYLE : IMAGE_STYLE;
-  // For custom prompts from users, sanitize and add safety guidelines
+  
   const safePrompt = isCustomPrompt ? sanitizePrompt(prompt) : prompt;
   const fullPrompt = `${safePrompt}, ${stylePrompt}. ${CONTENT_SAFETY_PROMPT}`;
   const apiKey = process.env.GOOGLE_AI_API_KEY;
@@ -255,6 +248,33 @@ async function generateWithOpenAI(prompt: string): Promise<Buffer> {
   return Buffer.from(imageData, 'base64');
 }
 
+// Save image to Vercel Blob storage
+async function saveToBlob(imageBuffer: Buffer, blobPath: string, contentType: string): Promise<string> {
+  console.log(`[Blob] Uploading to: ${blobPath}`);
+  const blob = await put(blobPath, imageBuffer, {
+    access: 'public',
+    contentType,
+  });
+  console.log(`[Blob] Uploaded successfully: ${blob.url}`);
+  return blob.url;
+}
+
+// Save image to local filesystem
+function saveToFilesystem(imageBuffer: Buffer, baseDir: string, rawDir: string, filename: string): string {
+  if (!fs.existsSync(baseDir)) {
+    fs.mkdirSync(baseDir, { recursive: true });
+  }
+  if (!fs.existsSync(rawDir)) {
+    fs.mkdirSync(rawDir, { recursive: true });
+  }
+  
+  const rawFilepath = path.join(rawDir, filename);
+  const processedFilepath = path.join(baseDir, filename);
+  
+  fs.writeFileSync(rawFilepath, imageBuffer);
+  return processedFilepath;
+}
+
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
   
@@ -283,45 +303,22 @@ export async function POST(request: NextRequest) {
 
         const promptToUse = customPrompt || config?.prompt || '';
         const isBackground = type === 'background';
+        const timestamp = Date.now();
+
+        // On Vercel, only allow background generation (letters/numbers need local processing)
+        if (isVercel && !isBackground) {
+          send({ 
+            status: 'error', 
+            message: 'Letter and number images must be generated locally (requires background removal). Only background images can be generated on the server.' 
+          });
+          controller.close();
+          return;
+        }
 
         send({ status: 'started', message: `Generating ${isBackground ? 'background' : 'image'} for ${type} "${item}"...` });
         send({ status: 'progress', message: `Using prompt: ${promptToUse}` });
-
-        // Generate unique filename with timestamp
-        const timestamp = Date.now();
-        
-        let baseDir: string;
-        let rawDir: string;
-        let filename: string;
-        let publicPath: string;
-
-        if (isBackground) {
-          baseDir = path.join(process.cwd(), 'public', 'images', 'backgrounds');
-          rawDir = path.join(baseDir, 'raw');
-          filename = `world_${item}_${timestamp}.jpg`;
-          publicPath = `/images/backgrounds/${filename}`;
-        } else {
-          const folderName = type === 'letter' ? item.toLowerCase() : item;
-          baseDir = path.join(process.cwd(), 'public', 'images', 'generated', type === 'letter' ? 'alphabet' : 'numbers', folderName);
-          rawDir = path.join(baseDir, 'raw');
-          filename = `${folderName}_${timestamp}.png`;
-          publicPath = `/images/generated/${type === 'letter' ? 'alphabet' : 'numbers'}/${folderName}/${filename}`;
-        }
-        
-        // Create folders if they don't exist
-        if (!fs.existsSync(baseDir)) {
-          fs.mkdirSync(baseDir, { recursive: true });
-        }
-        if (!fs.existsSync(rawDir)) {
-          fs.mkdirSync(rawDir, { recursive: true });
-        }
-
-        const rawFilepath = path.join(rawDir, filename);
-        const processedFilepath = path.join(baseDir, filename);
-
         send({ status: 'progress', message: `Calling ${provider} API...` });
 
-        // Track if this is a user-provided custom prompt (needs extra safety filtering)
         const isCustomUserPrompt = !!customPrompt;
 
         let imageBuffer: Buffer;
@@ -331,34 +328,60 @@ export async function POST(request: NextRequest) {
           imageBuffer = await generateWithOpenAI(promptToUse);
         }
 
-        send({ status: 'progress', message: 'Saving raw image...' });
-        fs.writeFileSync(rawFilepath, imageBuffer);
+        let finalImageUrl: string;
 
-        if (isBackground) {
-          // Backgrounds don't need background removal
-          fs.copyFileSync(rawFilepath, processedFilepath);
-          send({ status: 'progress', message: 'Background saved!' });
+        if (isVercel) {
+          // On Vercel: Save backgrounds to Blob storage (only backgrounds allowed on Vercel)
+          send({ status: 'progress', message: 'Saving to cloud storage...' });
+          
+          const blobPath = `images/backgrounds/world_${item}_${timestamp}.jpg`;
+          finalImageUrl = await saveToBlob(imageBuffer, blobPath, 'image/jpeg');
+          send({ status: 'progress', message: 'Background saved to cloud!' });
+          
         } else {
-          send({ status: 'progress', message: 'Removing background...' });
-          try {
-            // Copy raw to processed location first
-            fs.copyFileSync(rawFilepath, processedFilepath);
-            // Run background removal on the processed copy
-            await removeBackground(processedFilepath);
-            send({ status: 'progress', message: 'Background removed!' });
-          } catch (bgError) {
-            console.error('[Background Removal] Error:', bgError);
-            // If background removal fails, just copy the raw image
-            fs.copyFileSync(rawFilepath, processedFilepath);
-            send({ status: 'progress', message: 'Background removal failed, using original image' });
+          // Local development: Save to filesystem with background removal
+          send({ status: 'progress', message: 'Saving raw image...' });
+          
+          let baseDir: string;
+          let rawDir: string;
+          let filename: string;
+          let publicPath: string;
+
+          if (isBackground) {
+            baseDir = path.join(process.cwd(), 'public', 'images', 'backgrounds');
+            rawDir = path.join(baseDir, 'raw');
+            filename = `world_${item}_${timestamp}.jpg`;
+            publicPath = `/images/backgrounds/${filename}`;
+          } else {
+            const folderName = type === 'letter' ? item.toLowerCase() : item;
+            baseDir = path.join(process.cwd(), 'public', 'images', 'generated', type === 'letter' ? 'alphabet' : 'numbers', folderName);
+            rawDir = path.join(baseDir, 'raw');
+            filename = `${folderName}_${timestamp}.png`;
+            publicPath = `/images/generated/${type === 'letter' ? 'alphabet' : 'numbers'}/${folderName}/${filename}`;
           }
+
+          const processedFilepath = saveToFilesystem(imageBuffer, baseDir, rawDir, filename);
+
+          if (isBackground) {
+            send({ status: 'progress', message: 'Background saved!' });
+          } else {
+            send({ status: 'progress', message: 'Removing background...' });
+            try {
+              await removeBackground(processedFilepath);
+              send({ status: 'progress', message: 'Background removed!' });
+            } catch (bgError) {
+              console.error('[Background Removal] Error:', bgError);
+              send({ status: 'progress', message: 'Background removal failed, using original image' });
+            }
+          }
+          
+          finalImageUrl = publicPath;
         }
 
         send({ 
           status: 'complete', 
           message: 'Image generated successfully!',
-          image: publicPath,
-          filename,
+          image: finalImageUrl,
         });
 
       } catch (error) {

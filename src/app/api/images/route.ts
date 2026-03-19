@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { list, del } from '@vercel/blob';
 import * as fs from 'fs';
 import * as path from 'path';
+
+// Check if we're on Vercel (use Blob storage) or local (use filesystem)
+const isVercel = process.env.VERCEL === '1';
 
 const ALPHABET_DIR = path.join(process.cwd(), 'public', 'images', 'generated', 'alphabet');
 const NUMBERS_DIR = path.join(process.cwd(), 'public', 'images', 'generated', 'numbers');
@@ -13,20 +17,13 @@ interface ImageInfo {
   selected?: boolean;
 }
 
-interface ItemImages {
-  item: string;
-  type: 'letter' | 'number' | 'background';
-  word?: string;
-  description?: string;
-  images: ImageInfo[];
-  selectedImage?: string;
-}
-
 const BACKGROUND_IDS = ['undersea', 'land', 'schoolyard', 'clouds', 'stars', 'frozen', 'desert'];
 
-function getImagesForItem(type: 'letter' | 'number' | 'background', item: string): ImageInfo[] {
+// ============ Local filesystem functions ============
+
+function getLocalImagesForItem(type: 'letter' | 'number' | 'background', item: string): ImageInfo[] {
   if (type === 'background') {
-    return getBackgroundImages(item);
+    return getLocalBackgroundImages(item);
   }
   
   const baseDir = type === 'letter' ? ALPHABET_DIR : NUMBERS_DIR;
@@ -51,7 +48,7 @@ function getImagesForItem(type: 'letter' | 'number' | 'background', item: string
   }).sort((a, b) => b.createdAt - a.createdAt);
 }
 
-function getBackgroundImages(id: string): ImageInfo[] {
+function getLocalBackgroundImages(id: string): ImageInfo[] {
   if (!fs.existsSync(BACKGROUNDS_DIR)) {
     return [];
   }
@@ -73,13 +70,13 @@ function getBackgroundImages(id: string): ImageInfo[] {
   }).sort((a, b) => b.createdAt - a.createdAt);
 }
 
-function getSelectedImage(type: 'letter' | 'number' | 'background', item: string): string | undefined {
+function getLocalSelectedImage(type: 'letter' | 'number' | 'background', item: string): string | undefined {
   if (type === 'background') {
     const selectionFile = path.join(BACKGROUNDS_DIR, `.selected_${item}`);
     if (fs.existsSync(selectionFile)) {
       return fs.readFileSync(selectionFile, 'utf-8').trim();
     }
-    const images = getBackgroundImages(item);
+    const images = getLocalBackgroundImages(item);
     return images[0]?.path;
   }
   
@@ -90,10 +87,43 @@ function getSelectedImage(type: 'letter' | 'number' | 'background', item: string
     return fs.readFileSync(selectionFile, 'utf-8').trim();
   }
   
-  // Default to most recent image
-  const images = getImagesForItem(type, item);
+  const images = getLocalImagesForItem(type, item);
   return images[0]?.path;
 }
+
+// ============ Vercel Blob functions ============
+
+async function getBlobImagesForItem(type: 'letter' | 'number' | 'background', item: string): Promise<ImageInfo[]> {
+  try {
+    let prefix: string;
+    
+    if (type === 'background') {
+      prefix = `images/backgrounds/world_${item}`;
+    } else {
+      const folder = type === 'letter' ? 'alphabet' : 'numbers';
+      prefix = `images/generated/${folder}/${item.toLowerCase()}/`;
+    }
+    
+    const { blobs } = await list({ prefix });
+    
+    return blobs.map(blob => ({
+      filename: blob.pathname.split('/').pop() || '',
+      path: blob.url,
+      createdAt: new Date(blob.uploadedAt).getTime(),
+    })).sort((a, b) => b.createdAt - a.createdAt);
+  } catch (error) {
+    console.error(`[Blob] Error listing images for ${type}/${item}:`, error);
+    return [];
+  }
+}
+
+async function getBlobSelectedImage(type: 'letter' | 'number' | 'background', item: string): Promise<string | undefined> {
+  // For blob storage, just return the most recent image
+  const images = await getBlobImagesForItem(type, item);
+  return images[0]?.path;
+}
+
+// ============ Unified API handlers ============
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -102,8 +132,12 @@ export async function GET(request: NextRequest) {
 
   if (item && type) {
     // Get images for specific item
-    const images = getImagesForItem(type, item);
-    const selected = getSelectedImage(type, item);
+    const images = isVercel 
+      ? await getBlobImagesForItem(type, item)
+      : getLocalImagesForItem(type, item);
+    const selected = isVercel
+      ? await getBlobSelectedImage(type, item)
+      : getLocalSelectedImage(type, item);
     
     return NextResponse.json({
       item,
@@ -114,28 +148,61 @@ export async function GET(request: NextRequest) {
   }
 
   // Get all items
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => ({
-    item: letter,
-    type: 'letter' as const,
-    images: getImagesForItem('letter', letter),
-    selectedImage: getSelectedImage('letter', letter),
-  }));
+  if (isVercel) {
+    // On Vercel, fetch from blob storage
+    const lettersPromises = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(async letter => ({
+      item: letter,
+      type: 'letter' as const,
+      images: await getBlobImagesForItem('letter', letter),
+      selectedImage: await getBlobSelectedImage('letter', letter),
+    }));
 
-  const numbers = '0123456789'.split('').map(num => ({
-    item: num,
-    type: 'number' as const,
-    images: getImagesForItem('number', num),
-    selectedImage: getSelectedImage('number', num),
-  }));
+    const numbersPromises = '0123456789'.split('').map(async num => ({
+      item: num,
+      type: 'number' as const,
+      images: await getBlobImagesForItem('number', num),
+      selectedImage: await getBlobSelectedImage('number', num),
+    }));
 
-  const backgrounds = BACKGROUND_IDS.map(id => ({
-    item: id,
-    type: 'background' as const,
-    images: getBackgroundImages(id),
-    selectedImage: getSelectedImage('background', id),
-  }));
+    const backgroundsPromises = BACKGROUND_IDS.map(async id => ({
+      item: id,
+      type: 'background' as const,
+      images: await getBlobImagesForItem('background', id),
+      selectedImage: await getBlobSelectedImage('background', id),
+    }));
 
-  return NextResponse.json({ letters, numbers, backgrounds });
+    const [letters, numbers, backgrounds] = await Promise.all([
+      Promise.all(lettersPromises),
+      Promise.all(numbersPromises),
+      Promise.all(backgroundsPromises),
+    ]);
+
+    return NextResponse.json({ letters, numbers, backgrounds });
+  } else {
+    // Local filesystem
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => ({
+      item: letter,
+      type: 'letter' as const,
+      images: getLocalImagesForItem('letter', letter),
+      selectedImage: getLocalSelectedImage('letter', letter),
+    }));
+
+    const numbers = '0123456789'.split('').map(num => ({
+      item: num,
+      type: 'number' as const,
+      images: getLocalImagesForItem('number', num),
+      selectedImage: getLocalSelectedImage('number', num),
+    }));
+
+    const backgrounds = BACKGROUND_IDS.map(id => ({
+      item: id,
+      type: 'background' as const,
+      images: getLocalBackgroundImages(id),
+      selectedImage: getLocalSelectedImage('background', id),
+    }));
+
+    return NextResponse.json({ letters, numbers, backgrounds });
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -146,6 +213,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
+  if (isVercel) {
+    // On Vercel, selection is just tracked by most recent - no persistence needed
+    // Could store in a KV store or database if needed
+    return NextResponse.json({ success: true, selectedImage });
+  }
+
+  // Local filesystem
   if (type === 'background') {
     if (!fs.existsSync(BACKGROUNDS_DIR)) {
       fs.mkdirSync(BACKGROUNDS_DIR, { recursive: true });
@@ -158,7 +232,6 @@ export async function POST(request: NextRequest) {
   const baseDir = type === 'letter' ? ALPHABET_DIR : NUMBERS_DIR;
   const selectionFile = path.join(baseDir, item.toLowerCase(), '.selected');
   
-  // Create directory if needed
   const itemDir = path.join(baseDir, item.toLowerCase());
   if (!fs.existsSync(itemDir)) {
     fs.mkdirSync(itemDir, { recursive: true });
@@ -177,7 +250,18 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Missing path' }, { status: 400 });
   }
 
-  // Security: ensure path is within allowed directories
+  if (isVercel) {
+    // Delete from Blob storage
+    try {
+      await del(imagePath);
+      return NextResponse.json({ success: true });
+    } catch (error) {
+      console.error('[Blob] Delete error:', error);
+      return NextResponse.json({ error: 'Failed to delete' }, { status: 500 });
+    }
+  }
+
+  // Local filesystem
   if (!imagePath.startsWith('/images/generated/') && !imagePath.startsWith('/images/backgrounds/')) {
     return NextResponse.json({ error: 'Invalid path' }, { status: 400 });
   }

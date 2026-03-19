@@ -66,7 +66,7 @@ export function Celebration({ show, type, value, onComplete }: CelebrationProps)
           
           newImageParticles.push({
             id: row * perRow + col,
-            x: Math.max(0, Math.min(74, x)), // Keep within bounds (leaving room for 26% width)
+            x: Math.max(0, Math.min(82, x)), // Keep within bounds (leaving room for 18% width)
             rotation: (Math.random() * 35 + 5) * (Math.random() > 0.5 ? 1 : -1),
             delay: row * 0.35 + col * 0.05, // Increased row stagger by 35% for more vertical spacing
           });
@@ -145,8 +145,8 @@ export function Celebration({ show, type, value, onComplete }: CelebrationProps)
               style={{
                 left: `${particle.x}%`,
                 bottom: 0,
-                width: '26vw',
-                height: '26vw',
+                width: '18vw',
+                height: '18vw',
               }}
               initial={{ 
                 y: '100%',
