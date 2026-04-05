@@ -34,13 +34,19 @@ type Tab = 'browse' | 'create';
 interface WorldPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** When the modal opens, show this tab (toolbar mic uses `create` for quick access). */
+  initialTab?: Tab;
 }
 
 /** Stacking above playground keyboard (z-300) and toolbars — portaled to body. */
 const Z_BACKDROP = 'z-[6000]';
 const Z_MODAL = 'z-[6001]';
 
-export function WorldPickerModal({ isOpen, onClose }: WorldPickerModalProps) {
+export function WorldPickerModal({
+  isOpen,
+  onClose,
+  initialTab: initialTabProp = 'browse',
+}: WorldPickerModalProps) {
   const { currentBackground, setBackground, availableBackgrounds, loadBackgrounds, registerUserBackground } =
     usePlaygroundStore();
   const [activeTab, setActiveTab] = useState<Tab>('browse');
@@ -59,11 +65,16 @@ export function WorldPickerModal({ isOpen, onClose }: WorldPickerModalProps) {
   }, []);
 
   useEffect(() => {
-    if (isOpen) {
-      loadBackgrounds();
-      setActiveTab('browse');
+    if (!isOpen) return;
+    loadBackgrounds();
+    setActiveTab(initialTabProp);
+    if (initialTabProp === 'create') {
+      setCustomPrompt('');
+      shouldAutoSubmitRef.current = false;
+      recognitionRef.current?.stop();
+      setIsListening(false);
     }
-  }, [isOpen, loadBackgrounds]);
+  }, [isOpen, loadBackgrounds, initialTabProp]);
 
   const handleSelectWorld = useCallback(
     (thumbnail: string) => {

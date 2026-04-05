@@ -15,6 +15,9 @@ export function DrawingToolbar() {
   
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showWorldPicker, setShowWorldPicker] = useState(false);
+  const [worldPickerInitialTab, setWorldPickerInitialTab] = useState<
+    'browse' | 'create'
+  >('browse');
 
   return (
     <>
@@ -94,11 +97,28 @@ export function DrawingToolbar() {
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => setShowWorldPicker(true)}
+            onClick={() => {
+              setWorldPickerInitialTab('browse');
+              setShowWorldPicker(true);
+            }}
             className="w-11 h-11 rounded-xl flex items-center justify-center text-xl hover:bg-gray-100 transition-colors"
             title="Choose World"
           >
             🌍
+          </motion.button>
+
+          {/* Quick access: Create New world (tap mic in the modal to speak) */}
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => {
+              setWorldPickerInitialTab('create');
+              setShowWorldPicker(true);
+            }}
+            className="w-11 h-11 rounded-xl flex items-center justify-center text-xl hover:bg-gray-100 transition-colors"
+            title="Create world — tap the microphone in the window to speak"
+          >
+            🎤
           </motion.button>
         </motion.div>
       </div>
@@ -110,9 +130,10 @@ export function DrawingToolbar() {
       />
 
       {/* World picker modal */}
-      <WorldPickerModal 
-        isOpen={showWorldPicker} 
-        onClose={() => setShowWorldPicker(false)} 
+      <WorldPickerModal
+        isOpen={showWorldPicker}
+        onClose={() => setShowWorldPicker(false)}
+        initialTab={worldPickerInitialTab}
       />
     </>
   );
