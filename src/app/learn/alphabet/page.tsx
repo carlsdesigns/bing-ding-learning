@@ -67,8 +67,10 @@ export default function AlphabetPage() {
   const [letterImages, setLetterImages] = useState<Record<string, string>>({});
   const [letterOrder, setLetterOrder] = useState<string[]>(() => shuffleArray(ALPHABET));
   const [orderIndex, setOrderIndex] = useState(0);
+  const [choiceButtonsLocked, setChoiceButtonsLocked] = useState(false);
+  const choiceAdvanceGuardRef = useRef(false);
 
-  const { speak, isPlaying } = useVoice();
+  const { speak } = useVoice();
   const { getHint, getEncouragement } = useAI();
   const { recordActivity } = useSession();
   const {
@@ -146,7 +148,7 @@ export default function AlphabetPage() {
   }, []);
 
   const buildQuestionForTarget = useCallback(
-    (target: string, speakPrompt: boolean) => {
+    async (target: string, speakPrompt: boolean) => {
       setCurrentLetter(target);
       setCurrentItem(target);
       resetAttempts();
@@ -165,13 +167,15 @@ export default function AlphabetPage() {
           const useName = shouldUseName();
           const prompt = getQuestionPrompt('alphabet', target, childName || undefined, useName);
           if (useName) markNameUsed();
-          speak(prompt);
+          await speak(prompt);
         } else if (mode === 'phonics') {
-          speak(`Which letter makes the ${PHONICS[target]} sound?`);
+          await speak(`Which letter makes the ${PHONICS[target]} sound?`);
         } else {
           const word = WORDS[target];
-          speak(`${target} is for ${word}. Find the letter ${target}.`);
+          await speak(`${target} is for ${word}. Find the letter ${target}.`);
         }
+      } else if (speakPrompt) {
+        await new Promise((r) => setTimeout(r, 420));
       }
     },
     [voiceEnabled, mode, shouldUseName, childName, markNameUsed, speak, setCurrentItem, resetAttempts]
@@ -189,47 +193,60 @@ export default function AlphabetPage() {
   }, [isIntroPhase, mode]);
 
   const handleAnswer = async (selected: string) => {
+    if (choiceAdvanceGuardRef.current) return;
     const correct = selected === currentLetter;
+    if (correct) {
+      choiceAdvanceGuardRef.current = true;
+      setChoiceButtonsLocked(true);
+    }
+
     incrementAttempts();
     incrementInteraction();
     setTotalAttempts((t) => t + 1);
 
     if (correct) {
-      setCorrectCount((c) => c + 1);
-      setCelebrationLetter(currentLetter!);
-      setShowCelebration(true);
-      
-      const letterPhrase = `${currentLetter} is for ${WORDS[currentLetter!]}!`;
-      const showEncouragement = (correctCount + 1) % 5 === 0;
-      const useName = shouldUseName();
-      const encouragement = showEncouragement ? ` ${getCorrectMessage(childName || undefined, useName)}` : '';
-      if (useName && showEncouragement) markNameUsed();
-      
-      setFeedback(`${letterPhrase}${encouragement} 🎉`);
-
       try {
-        await recordActivity({
-          activityType: mode,
-          target: currentLetter!,
-          correct: true,
-          attempts,
-          voicePlayed: voiceEnabled,
-        });
-      } catch {
-        // Session recording is optional
+        setCorrectCount((c) => c + 1);
+        setCelebrationLetter(currentLetter!);
+        setShowCelebration(true);
+
+        const letterPhrase = `${currentLetter} is for ${WORDS[currentLetter!]}!`;
+        const showEncouragement = (correctCount + 1) % 5 === 0;
+        const useName = shouldUseName();
+        const encouragement = showEncouragement
+          ? ` ${getCorrectMessage(childName || undefined, useName)}`
+          : '';
+        if (useName && showEncouragement) markNameUsed();
+
+        setFeedback(`${letterPhrase}${encouragement} 🎉`);
+
+        try {
+          await recordActivity({
+            activityType: mode,
+            target: currentLetter!,
+            correct: true,
+            attempts,
+            voicePlayed: voiceEnabled,
+          });
+        } catch {
+          // Session recording is optional
+        }
+
+        if (voiceEnabled) {
+          await speak(`${letterPhrase}${encouragement}`);
+        }
+
+        setTimeout(() => {
+          setShowCelebration(false);
+        }, 2500);
+
+        const nextIdx = (orderIndex + 1) % letterOrder.length;
+        setOrderIndex(nextIdx);
+        await buildQuestionForTarget(letterOrder[nextIdx], true);
+      } finally {
+        choiceAdvanceGuardRef.current = false;
+        setChoiceButtonsLocked(false);
       }
-
-      if (voiceEnabled) {
-        await speak(`${letterPhrase}${encouragement}`);
-      }
-
-      setTimeout(() => {
-        setShowCelebration(false);
-      }, 2500);
-
-      const nextIdx = (orderIndex + 1) % letterOrder.length;
-      setOrderIndex(nextIdx);
-      buildQuestionForTarget(letterOrder[nextIdx], true);
     } else {
       const wrongGuidance = getAlphabetWrongGuidance(
         currentLetter!,
@@ -239,12 +256,6 @@ export default function AlphabetPage() {
         shouldUseName()
       );
       setFeedback(wrongGuidance);
-
-      const t = currentLetter!;
-      const wrongOpts = ALPHABET.filter((l) => l !== t)
-        .sort(() => Math.random() - 0.5)
-        .slice(0, 3);
-      setOptions([...wrongOpts, t].sort(() => Math.random() - 0.5));
 
       if (voiceEnabled) {
         await speak(wrongGuidance);
@@ -462,8 +473,8 @@ export default function AlphabetPage() {
                       whileHover={{ scale: 1.08, y: -4 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => handleAnswer(letter)}
-                      disabled={isPlaying}
-                      className={`w-20 h-20 md:w-24 md:h-24 bg-white border-4 ${currentButtonColor} rounded-3xl text-3xl md:text-4xl font-bold text-gray-700 shadow-lg hover:shadow-xl disabled:opacity-50 transition-all`}
+                      disabled={choiceButtonsLocked}
+                      className={`w-20 h-20 md:w-24 md:h-24 bg-white border-4 ${currentButtonColor} rounded-3xl text-3xl md:text-4xl font-bold text-gray-700 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:pointer-events-none`}
                     >
                       {letter}
                     </motion.button>
@@ -502,8 +513,7 @@ export default function AlphabetPage() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={handleSpeakLetter}
-                disabled={isPlaying}
-                className="px-6 py-2 md:px-8 md:py-3 bg-pink-400 rounded-full shadow-lg text-white font-bold text-base md:text-lg hover:bg-pink-500 disabled:opacity-50 transition-colors flex items-center gap-2"
+                className="px-6 py-2 md:px-8 md:py-3 bg-pink-400 rounded-full shadow-lg text-white font-bold text-base md:text-lg hover:bg-pink-500 transition-colors flex items-center gap-2"
               >
                 <span className="text-lg md:text-xl">🔊</span> Hear It
               </motion.button>

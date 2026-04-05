@@ -57,8 +57,10 @@ export default function NumbersPage() {
   const [numberImages, setNumberImages] = useState<Record<string, string>>({});
   const [numberOrder, setNumberOrder] = useState<number[]>(() => shuffleArray(NUMBERS));
   const [orderIndex, setOrderIndex] = useState(0);
+  const [choiceButtonsLocked, setChoiceButtonsLocked] = useState(false);
+  const choiceAdvanceGuardRef = useRef(false);
 
-  const { speak, isPlaying } = useVoice();
+  const { speak } = useVoice();
   const { getHint, getEncouragement } = useAI();
   const { startSession, recordActivity, isActive } = useSession();
   const {
@@ -136,7 +138,7 @@ export default function NumbersPage() {
   }, []);
 
   const buildQuestionForTarget = useCallback(
-    (target: number, speakPrompt: boolean) => {
+    async (target: number, speakPrompt: boolean) => {
       setCurrentNumber(target);
       setCurrentItem(target.toString());
       resetAttempts();
@@ -155,10 +157,12 @@ export default function NumbersPage() {
           const useName = shouldUseName();
           const prompt = getQuestionPrompt('numbers', target.toString(), childName || undefined, useName);
           if (useName) markNameUsed();
-          speak(prompt);
+          await speak(prompt);
         } else {
-          speak(numberPicturesSpeech(target));
+          await speak(numberPicturesSpeech(target));
         }
+      } else if (speakPrompt) {
+        await new Promise((r) => setTimeout(r, 420));
       }
     },
     [voiceEnabled, mode, shouldUseName, childName, markNameUsed, speak, setCurrentItem, resetAttempts]
@@ -176,47 +180,60 @@ export default function NumbersPage() {
   }, [isIntroPhase, mode]);
 
   const handleAnswer = async (selected: number) => {
+    if (choiceAdvanceGuardRef.current) return;
     const correct = selected === currentNumber;
+    if (correct) {
+      choiceAdvanceGuardRef.current = true;
+      setChoiceButtonsLocked(true);
+    }
+
     incrementAttempts();
     incrementInteraction();
     setTotalAttempts((t) => t + 1);
 
     if (correct) {
-      setCorrectCount((c) => c + 1);
-      setCelebrationNumber(currentNumber!.toString());
-      setShowCelebration(true);
-      
-      const numberPhrase = `That's ${currentNumber}!`;
-      const showEncouragement = (correctCount + 1) % 5 === 0;
-      const useName = shouldUseName();
-      const encouragement = showEncouragement ? ` ${getCorrectMessage(childName || undefined, useName)}` : '';
-      if (useName && showEncouragement) markNameUsed();
-      
-      setFeedback(`${numberPhrase}${encouragement} 🎉`);
-
       try {
-        await recordActivity({
-          activityType: mode,
-          target: currentNumber!.toString(),
-          correct: true,
-          attempts,
-          voicePlayed: voiceEnabled,
-        });
-      } catch {
-        // Session recording is optional
+        setCorrectCount((c) => c + 1);
+        setCelebrationNumber(currentNumber!.toString());
+        setShowCelebration(true);
+
+        const numberPhrase = `That's ${currentNumber}!`;
+        const showEncouragement = (correctCount + 1) % 5 === 0;
+        const useName = shouldUseName();
+        const encouragement = showEncouragement
+          ? ` ${getCorrectMessage(childName || undefined, useName)}`
+          : '';
+        if (useName && showEncouragement) markNameUsed();
+
+        setFeedback(`${numberPhrase}${encouragement} 🎉`);
+
+        try {
+          await recordActivity({
+            activityType: mode,
+            target: currentNumber!.toString(),
+            correct: true,
+            attempts,
+            voicePlayed: voiceEnabled,
+          });
+        } catch {
+          // Session recording is optional
+        }
+
+        if (voiceEnabled) {
+          await speak(`${numberPhrase}${encouragement}`);
+        }
+
+        setTimeout(() => {
+          setShowCelebration(false);
+        }, 2000);
+
+        const nextIdx = (orderIndex + 1) % numberOrder.length;
+        setOrderIndex(nextIdx);
+        await buildQuestionForTarget(numberOrder[nextIdx], true);
+      } finally {
+        choiceAdvanceGuardRef.current = false;
+        setChoiceButtonsLocked(false);
       }
-
-      if (voiceEnabled) {
-        await speak(`${numberPhrase}${encouragement}`);
-      }
-
-      setTimeout(() => {
-        setShowCelebration(false);
-      }, 2000);
-
-      const nextIdx = (orderIndex + 1) % numberOrder.length;
-      setOrderIndex(nextIdx);
-      buildQuestionForTarget(numberOrder[nextIdx], true);
     } else {
       const wrongGuidance = getNumbersWrongGuidance(
         currentNumber!.toString(),
@@ -224,12 +241,6 @@ export default function NumbersPage() {
         shouldUseName()
       );
       setFeedback(wrongGuidance);
-
-      const t = currentNumber!;
-      const wrongOpts = NUMBERS.filter((n) => n !== t)
-        .sort(() => Math.random() - 0.5)
-        .slice(0, 3);
-      setOptions([...wrongOpts, t].sort(() => Math.random() - 0.5));
 
       if (voiceEnabled) {
         await speak(wrongGuidance);
@@ -422,8 +433,8 @@ export default function NumbersPage() {
                       whileHover={{ scale: 1.08, y: -4 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => handleAnswer(num)}
-                      disabled={isPlaying}
-                      className={`w-20 h-20 md:w-24 md:h-24 bg-white border-4 ${currentButtonColor} rounded-3xl text-3xl md:text-4xl font-bold text-gray-700 shadow-lg hover:shadow-xl disabled:opacity-50 transition-all`}
+                      disabled={choiceButtonsLocked}
+                      className={`w-20 h-20 md:w-24 md:h-24 bg-white border-4 ${currentButtonColor} rounded-3xl text-3xl md:text-4xl font-bold text-gray-700 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:pointer-events-none`}
                     >
                       {num}
                     </motion.button>
@@ -462,8 +473,7 @@ export default function NumbersPage() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={handleSpeakNumber}
-                disabled={isPlaying}
-                className="px-6 py-2 md:px-8 md:py-3 bg-sunny-400 rounded-full shadow-lg text-white font-bold text-base md:text-lg hover:bg-sunny-500 disabled:opacity-50 transition-colors flex items-center gap-2"
+                className="px-6 py-2 md:px-8 md:py-3 bg-sunny-400 rounded-full shadow-lg text-white font-bold text-base md:text-lg hover:bg-sunny-500 transition-colors flex items-center gap-2"
               >
                 <span className="text-lg md:text-xl">🔊</span> Hear It
               </motion.button>

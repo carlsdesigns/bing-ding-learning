@@ -19,14 +19,17 @@ export interface VoiceSettings {
 const ELEVENLABS_API_URL = 'https://api.elevenlabs.io/v1';
 
 /** Bump when preprocess rules change so cached MP3s are regenerated. */
-export const TTS_NORMALIZATION_VERSION = 2;
+export const TTS_NORMALIZATION_VERSION = 3;
 
 /**
  * How to say each letter name (avoids TTS reading "R" as "are", "H" as a
  * mumbled digraph, "U" as the pronoun "you", etc.).
+ *
+ * "Ay" alone was often read like "aye/eye" (/aɪ/). "Aay" nudges ElevenLabs
+ * toward the American letter name /eɪ/ (same as the A in "day").
  */
 const LETTER_SPELLOUTS: Record<string, string> = {
-  A: 'Ay',
+  A: 'Aay',
   B: 'Bee',
   C: 'See',
   D: 'Dee',
