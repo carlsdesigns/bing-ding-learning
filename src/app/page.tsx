@@ -5,15 +5,41 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useChildStore } from '@/stores';
 import { DecorativeShapes } from '@/components/ui/decorative-shapes';
+import { ShareAppModal } from '@/components/home/share-app-modal';
+import {
+  parseChildNameFromSearch,
+  stripChildNameParamFromCurrentUrl,
+} from '@/lib/home-share-link';
 
 export default function HomePage() {
   const { childName, setChildName } = useChildStore();
   const [nameInput, setNameInput] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     setIsHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    const applyNameFromUrl = () => {
+      if (typeof window === 'undefined') return;
+      const name = parseChildNameFromSearch(window.location.search);
+      if (!name) return;
+      useChildStore.getState().setChildName(name);
+      stripChildNameParamFromCurrentUrl();
+    };
+
+    const { persist } = useChildStore;
+    if (persist.hasHydrated()) {
+      applyNameFromUrl();
+      return;
+    }
+    const unsub = persist.onFinishHydration(() => {
+      applyNameFromUrl();
+    });
+    return unsub;
   }, []);
 
   useEffect(() => {
@@ -187,7 +213,7 @@ export default function HomePage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
-          className="mt-10 flex justify-center gap-6"
+          className="mt-10 flex flex-wrap justify-center gap-x-6 gap-y-2"
         >
           <Link
             href="/settings"
@@ -207,7 +233,16 @@ export default function HomePage() {
           >
             Voice Settings
           </Link>
+          <button
+            type="button"
+            onClick={() => setShareOpen(true)}
+            className="text-gray-400 hover:text-gray-600 text-lg font-medium transition-colors"
+          >
+            Share
+          </button>
         </motion.div>
+
+        <ShareAppModal open={shareOpen} onOpenChange={setShareOpen} />
       </div>
     </main>
   );
