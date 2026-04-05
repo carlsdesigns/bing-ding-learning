@@ -1,19 +1,9 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { usePlaygroundStore, RAINBOW_COLORS } from '@/stores/playground-store';
-
-// Extended color palette for kids - big, fun colors
-const COLOR_OPTIONS = [
-  { color: '#EF4444', name: 'Red', emoji: '🔴' },
-  { color: '#F97316', name: 'Orange', emoji: '🟠' },
-  { color: '#EAB308', name: 'Yellow', emoji: '🟡' },
-  { color: '#22C55E', name: 'Green', emoji: '🟢' },
-  { color: '#3B82F6', name: 'Blue', emoji: '🔵' },
-  { color: '#8B5CF6', name: 'Purple', emoji: '🟣' },
-  { color: '#EC4899', name: 'Pink', emoji: '💗' },
-  { color: '#171717', name: 'Black', emoji: '⚫' },
-];
+import { usePlaygroundStore } from '@/stores/playground-store';
+import { useVoice } from '@/hooks';
+import { PLAYGROUND_DRAW_COLOR_SWATCHES, getPlaygroundColorName } from '@/lib/playground-colors';
 
 interface ColorPickerModalProps {
   isOpen: boolean;
@@ -21,11 +11,16 @@ interface ColorPickerModalProps {
 }
 
 export function ColorPickerModal({ isOpen, onClose }: ColorPickerModalProps) {
-  const { currentColor, setCurrentColor } = usePlaygroundStore();
+  const { currentColor, setCurrentColor, isSoundEnabled } = usePlaygroundStore();
+  const { speak } = useVoice();
 
   const handleSelectColor = (color: string) => {
     setCurrentColor(color);
     onClose();
+    if (isSoundEnabled) {
+      const label = getPlaygroundColorName(color);
+      void speak(label === 'your color' ? 'New color!' : `${label}!`);
+    }
   };
 
   if (!isOpen) return null;
@@ -56,7 +51,7 @@ export function ColorPickerModal({ isOpen, onClose }: ColorPickerModalProps) {
               </h2>
               
               <div className="grid grid-cols-4 gap-4">
-                {COLOR_OPTIONS.map(({ color, name, emoji }) => (
+                {PLAYGROUND_DRAW_COLOR_SWATCHES.map(({ color, name, emoji }) => (
                   <motion.button
                     key={color}
                     whileHover={{ scale: 1.1 }}
@@ -97,7 +92,7 @@ export function ColorPickerModal({ isOpen, onClose }: ColorPickerModalProps) {
               </h2>
               
               <div className="grid grid-cols-4 gap-3">
-                {COLOR_OPTIONS.map(({ color, name, emoji }) => (
+                {PLAYGROUND_DRAW_COLOR_SWATCHES.map(({ color, name, emoji }) => (
                   <motion.button
                     key={color}
                     whileTap={{ scale: 0.95 }}

@@ -84,13 +84,33 @@ interface PlaygroundActions {
   // Background actions
   setBackground: (background: string | null) => void;
   loadBackgrounds: () => Promise<void>;
+  registerUserBackground: (url: string) => void;
 }
 
 export { RAINBOW_COLORS };
 export type { Stroke, Point, DrawingTool };
 
+/** Keep letter/number stickers away from screen edges (px). */
+export const PLAYGROUND_CONTENT_MARGINS = {
+  top: 150,
+  left: 150,
+  right: 150,
+  bottom: 200,
+} as const;
+
 const MAX_OBJECTS = 300;
 const SPAWN_SIZE_PERCENT = 0.10; // 10% of screen width
+
+/** Base width as fraction of canvas width; must match playground canvas-object sizing. */
+export const PLAYGROUND_STICKER_BASE_SIZE_PERCENT = 0.151;
+
+/** 2× sticker/spawn size in portrait so letter images read better on phones. */
+export function playgroundCanvasStickerSizeMultiplier(size: {
+  width: number;
+  height: number;
+}): number {
+  return size.height > size.width ? 2 : 1;
+}
 
 // Default world backgrounds (excluding blank)
 const DEFAULT_BACKGROUNDS = [
@@ -210,12 +230,23 @@ export const usePlaygroundStore = create<PlaygroundState & PlaygroundActions>((s
     if (!imageSource) return;
 
     const { width, height } = state.canvasSize;
-    const spawnSize = width * SPAWN_SIZE_PERCENT;
-    const padding = spawnSize / 2;
+    const sizeMult = playgroundCanvasStickerSizeMultiplier(state.canvasSize);
+    const spawnPercent =
+      sizeMult > 1
+        ? Math.max(SPAWN_SIZE_PERCENT, PLAYGROUND_STICKER_BASE_SIZE_PERCENT)
+        : SPAWN_SIZE_PERCENT;
+    const spawnSize = width * spawnPercent * sizeMult;
+    const { top: mTop, left: mLeft, right: mRight, bottom: mBottom } =
+      PLAYGROUND_CONTENT_MARGINS;
 
-    // Random position within canvas bounds
-    const x = padding + Math.random() * (width - spawnSize - padding * 2);
-    const y = padding + Math.random() * (height - spawnSize - padding * 2);
+    const minX = mLeft;
+    const maxX = width - mRight - spawnSize;
+    const minY = mTop;
+    const maxY = height - mBottom - spawnSize;
+    const spanX = Math.max(0, maxX - minX);
+    const spanY = Math.max(0, maxY - minY);
+    const x = minX + (spanX > 0 ? Math.random() * spanX : 0);
+    const y = minY + (spanY > 0 ? Math.random() * spanY : 0);
 
     const newObject: CanvasObject = {
       id: `${normalizedKey}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -379,5 +410,13 @@ export const usePlaygroundStore = create<PlaygroundState & PlaygroundActions>((s
     } catch (error) {
       console.error('Failed to load backgrounds:', error);
     }
+  },
+
+  registerUserBackground: (url: string) => {
+    if (!url.trim()) return;
+    set((state) => {
+      if (state.availableBackgrounds.includes(url)) return state;
+      return { availableBackgrounds: [url, ...state.availableBackgrounds] };
+    });
   },
 }));

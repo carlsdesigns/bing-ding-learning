@@ -1,3 +1,5 @@
+import { NUMBER_CONFIG } from '@/../scripts/image-config';
+
 type GameType = 'numbers' | 'alphabet' | 'playground';
 
 const NUMBERS_INTROS = [
@@ -73,6 +75,59 @@ const ENCOURAGEMENT_NO_NAME = [
 
 function randomFrom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
+}
+
+/** Fisher–Yates shuffle (copy). */
+export function shuffleArray<T>(items: readonly T[]): T[] {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/** Short wrong-answer cue for fast button mashing / quick TTS. */
+export function getAlphabetWrongGuidance(
+  letter: string,
+  word: string,
+  _phonicsSound: string,
+  childName?: string,
+  useName = false,
+): string {
+  const L = letter.toUpperCase();
+  const n = childName && useName ? `${childName}, ` : '';
+  const lines = [
+    `${n}Oops! Look closely at the letters.`,
+    `${n}Oops! Find the ${L}! Look closely.`,
+    `${n}Oops! Match the letter shapes.`,
+    `${n}Oops! Same shape as the big ${L}.`,
+    `${n}Oops! Look for ${L}—${word}.`,
+    `${n}Not that one! Find ${L}.`,
+    `${n}Try again! Spot ${L}.`,
+    `${n}Oops! Which one looks like ${word}?`,
+  ];
+  return randomFrom(lines);
+}
+
+/** Short wrong-answer cue for numbers. */
+export function getNumbersWrongGuidance(
+  digit: string,
+  childName?: string,
+  useName = false,
+): string {
+  const n = childName && useName ? `${childName}, ` : '';
+  const shortHint =
+    NUMBER_CONFIG[digit]?.description?.split(' ').slice(0, 3).join(' ') ?? digit;
+  const lines = [
+    `${n}Oops! Look closely at the numbers.`,
+    `${n}Oops! Find the ${digit}!`,
+    `${n}Oops! Match the big ${digit}.`,
+    `${n}Not that one! Tap ${digit}.`,
+    `${n}Oops! Same number as up top.`,
+    `${n}Try again! ${shortHint}.`,
+  ];
+  return randomFrom(lines);
 }
 
 export function getGameIntro(gameType: GameType, childName?: string): string {

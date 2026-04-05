@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const isVercel = process.env.VERCEL === '1';
+const hasBlobToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 const BACKGROUNDS_DIR = path.join(process.cwd(), 'public', 'images', 'backgrounds');
 
 export async function GET() {
@@ -20,21 +21,22 @@ export async function GET() {
       backgrounds.push(...localBackgrounds);
     }
     
-    // On Vercel, also fetch from Blob storage (for runtime-generated backgrounds)
-    if (isVercel) {
+    // User-generated worlds in Blob (Vercel production, or local/preview when token is set)
+    if (isVercel || hasBlobToken) {
       try {
         const { blobs } = await list({ prefix: 'images/backgrounds/world_custom_' });
-        const blobBackgrounds = blobs.map(blob => blob.url);
+        const blobBackgrounds = blobs.map((blob) => blob.url);
         backgrounds.push(...blobBackgrounds);
       } catch (blobError) {
         console.error('Error fetching blob backgrounds:', blobError);
       }
     }
     
-    // Sort by newest first (reverse alphabetical works for timestamp-based names)
-    backgrounds.sort().reverse();
-    
-    return NextResponse.json({ backgrounds });
+    const unique = Array.from(new Set(backgrounds));
+    // Sort by newest first (reverse alphabetical works for timestamp-based local filenames)
+    unique.sort().reverse();
+
+    return NextResponse.json({ backgrounds: unique });
   } catch (error) {
     console.error('Failed to list backgrounds:', error);
     return NextResponse.json({ backgrounds: [] });

@@ -28,9 +28,9 @@ const LETTER_WORDS: Record<string, string> = {
 };
 
 const NUMBER_DESCRIPTIONS: Record<string, string> = {
-  '0': 'Zero', '1': 'One balloon', '2': 'Two kittens', '3': 'Three butterflies',
-  '4': 'Four apples', '5': 'Five ducks', '6': 'Six crayons',
-  '7': 'Seven stars', '8': 'Eight bees', '9': 'Nine balls',
+  '0': 'Zero', '1': 'One balloon', '2': 'Two kittens', '3': 'Three caterpillars',
+  '4': 'Four flamingos', '5': 'Five snakes', '6': 'Six snails',
+  '7': 'Seven praying mantises', '8': 'Eight millipedes', '9': 'Nine fish',
 };
 
 function getSelectedOrLatestImage(type: 'letter' | 'number', item: string): string | undefined {

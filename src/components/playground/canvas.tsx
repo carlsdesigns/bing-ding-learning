@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { usePlaygroundStore } from '@/stores/playground-store';
 import { CanvasObject } from './canvas-object';
@@ -106,15 +106,13 @@ export function PlaygroundCanvas() {
 
       {/* Layer 10+: Canvas objects/images - always interactive */}
       <div className="absolute inset-0 z-[10]">
-        <AnimatePresence>
-          {canvasObjects.map((obj) => (
-            <CanvasObject 
-              key={obj.id} 
-              object={obj} 
-              initialOffset={getOffset(obj.id)}
-            />
-          ))}
-        </AnimatePresence>
+        {canvasObjects.map((obj) => (
+          <CanvasObject
+            key={obj.id}
+            object={obj}
+            initialOffset={getOffset(obj.id)}
+          />
+        ))}
       </div>
 
       {/* Layer 100: Drawing input capture - full screen but transparent */}

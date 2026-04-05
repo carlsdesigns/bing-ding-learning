@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { textToSpeech } from '@/lib/voice';
+import { textToSpeech, TTS_NORMALIZATION_VERSION } from '@/lib/voice';
 import { put, head } from '@vercel/blob';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -13,7 +13,7 @@ const isVercel = process.env.VERCEL === '1';
 
 function getCacheKey(text: string, voiceId?: string): string {
   const normalizedText = text.toLowerCase().trim();
-  const key = `${normalizedText}-${voiceId || 'default'}`;
+  const key = `${normalizedText}-${voiceId || 'default'}-n${TTS_NORMALIZATION_VERSION}`;
   return crypto.createHash('md5').update(key).digest('hex');
 }
 

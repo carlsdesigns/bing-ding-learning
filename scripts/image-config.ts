@@ -192,32 +192,32 @@ export const NUMBER_CONFIG: Record<string, { description: string; prompt: string
     prompt: 'A cat in the shape of a number 2, orange and grey' 
   },
   '3': { 
-    description: 'Three butterflies', 
+    description: 'Three caterpillars', 
     prompt: 'Three colorful caterpillars, pink blue and yellow, in the shape of a 3' 
   },
   '4': { 
-    description: 'Four apples', 
-    prompt: 'a flamingo in the shape of a 4, standing on one leg' 
+    description: 'Four flamingos', 
+    prompt: 'Four pink flamingos arranged in the shape of a 4, friendly cartoon style' 
   },
   '5': { 
-    description: 'Five ducks', 
-    prompt: 'a snake in the shape of a 5' 
+    description: 'Five snakes', 
+    prompt: 'Five cute friendly snakes forming the shape of a 5, bright colors' 
   },
   '6': { 
-    description: 'Six crayons', 
-    prompt: 'a snail in the shape of a 6' 
+    description: 'Six snails', 
+    prompt: 'Six adorable snails with shells forming the shape of a 6' 
   },
   '7': { 
-    description: 'Seven stars', 
-    prompt: 'a Praying Mantis in the shape of a 7' 
+    description: 'Seven praying mantises', 
+    prompt: 'Seven friendly green praying mantises arranged in the shape of a 7' 
   },
   '8': { 
-    description: 'Eight bees', 
-    prompt: 'Coiled Millipede in the shape of an 8' 
+    description: 'Eight millipedes', 
+    prompt: 'Eight cute millipedes curled and arranged in the shape of an 8' 
   },
   '9': { 
-    description: 'Nine balls', 
-    prompt: 'a Tadpole in the shape of a 9' 
+    description: 'Nine fish', 
+    prompt: 'Nine colorful tropical fish swimming in formation in the shape of a 9' 
   },
 };
 

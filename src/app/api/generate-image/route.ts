@@ -3,9 +3,11 @@ import { put } from '@vercel/blob';
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
+import { NUMBER_CONFIG as SCRIPT_NUMBER_CONFIG } from '@/../scripts/image-config';
 
 // Check if we're on Vercel (use Blob storage) or local (use filesystem)
 const isVercel = process.env.VERCEL === '1';
+const hasBlobToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 
 const IMAGE_STYLE = `
   cute friendly cartoon illustration for children,
@@ -98,19 +100,6 @@ const LETTER_CONFIG: Record<string, { word: string; prompt: string }> = {
   Z: { word: 'Zebra', prompt: 'A friendly zebra with black and white stripes, standing proudly' },
 };
 
-const NUMBER_CONFIG: Record<string, { description: string; prompt: string }> = {
-  '0': { description: 'Zero', prompt: 'An empty bird nest, cozy but with nothing inside, peaceful' },
-  '1': { description: 'One balloon', prompt: 'One single red balloon floating, with a curly string' },
-  '2': { description: 'Two kittens', prompt: 'Two adorable kittens sitting side by side, one orange one grey' },
-  '3': { description: 'Three butterflies', prompt: 'Three colorful butterflies flying together, pink blue and yellow' },
-  '4': { description: 'Four apples', prompt: 'Four shiny apples in a row, red and green alternating' },
-  '5': { description: 'Five ducks', prompt: 'Five yellow rubber ducks in a line, cute and cheerful' },
-  '6': { description: 'Six crayons', prompt: 'Six colorful crayons standing upright, rainbow colors' },
-  '7': { description: 'Seven stars', prompt: 'Seven twinkling golden stars arranged in the sky, sparkling' },
-  '8': { description: 'Eight bees', prompt: 'Eight happy bumblebees flying in a group, yellow and black stripes' },
-  '9': { description: 'Nine balls', prompt: 'Nine bouncy balls in different colors arranged in a grid, colorful' },
-};
-
 const BACKGROUND_CONFIG: Record<string, { name: string; prompt: string }> = {
   'undersea': {
     name: 'Under the Sea',
@@ -149,7 +138,7 @@ function getConfig(type: 'letter' | 'number' | 'background', item: string) {
   if (type === 'background') {
     return BACKGROUND_CONFIG[item];
   }
-  return NUMBER_CONFIG[item];
+  return SCRIPT_NUMBER_CONFIG[item];
 }
 
 async function removeBackground(filepath: string): Promise<void> {
@@ -270,8 +259,11 @@ function saveToFilesystem(imageBuffer: Buffer, baseDir: string, rawDir: string, 
   
   const rawFilepath = path.join(rawDir, filename);
   const processedFilepath = path.join(baseDir, filename);
-  
+
+  // Keep raw/ archive and always write the public-served file (letters/numbers + backgrounds).
+  // Previously only raw was written, so /images/... URLs 404'd and Next/Image broke.
   fs.writeFileSync(rawFilepath, imageBuffer);
+  fs.writeFileSync(processedFilepath, imageBuffer);
   return processedFilepath;
 }
 
@@ -330,16 +322,16 @@ export async function POST(request: NextRequest) {
 
         let finalImageUrl: string;
 
-        if (isVercel) {
-          // On Vercel: Save backgrounds to Blob storage (only backgrounds allowed on Vercel)
+        const useBlobForBackground = isBackground && (isVercel || hasBlobToken);
+
+        if (useBlobForBackground) {
           send({ status: 'progress', message: 'Saving to cloud storage...' });
-          
+
           const blobPath = `images/backgrounds/world_${item}_${timestamp}.jpg`;
           finalImageUrl = await saveToBlob(imageBuffer, blobPath, 'image/jpeg');
           send({ status: 'progress', message: 'Background saved to cloud!' });
-          
         } else {
-          // Local development: Save to filesystem with background removal
+          // Local (no Blob token) or non-background: filesystem; letters/numbers may run Python bg removal
           send({ status: 'progress', message: 'Saving raw image...' });
           
           let baseDir: string;

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { textToSpeech } from '@/lib/voice';
+import { textToSpeech, TTS_NORMALIZATION_VERSION } from '@/lib/voice';
 import { LETTER_CONFIG, NUMBER_CONFIG } from '@/../scripts/image-config';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -9,7 +9,7 @@ const CACHE_DIR = path.join(process.cwd(), 'public', 'audio', 'tts-cache');
 
 function getCacheKey(text: string, voiceId?: string): string {
   const normalizedText = text.toLowerCase().trim();
-  const key = `${normalizedText}-${voiceId || 'default'}`;
+  const key = `${normalizedText}-${voiceId || 'default'}-n${TTS_NORMALIZATION_VERSION}`;
   return crypto.createHash('md5').update(key).digest('hex');
 }
 

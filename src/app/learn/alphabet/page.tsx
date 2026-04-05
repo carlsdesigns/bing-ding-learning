@@ -1,15 +1,27 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import Link from 'next/link';
+import { KidBackButton } from '@/components/ui/kid-back-button';
 import Image from 'next/image';
-import { TouchButton } from '@/components/touch/touch-button';
 import { Celebration } from '@/components/celebration';
 import { GameDecorativeShapes } from '@/components/ui/decorative-shapes';
 import { useVoice, useAI, useSession } from '@/hooks';
 import { useLearningStore, useChildStore } from '@/stores';
-import { getGameIntro, getCorrectMessage, getQuestionPrompt } from '@/lib/game-messages';
+import {
+  getGameIntro,
+  getCorrectMessage,
+  getQuestionPrompt,
+  getAlphabetWrongGuidance,
+  shuffleArray,
+} from '@/lib/game-messages';
+import {
+  type AlphabetGameMode,
+  readAlphabetMode,
+  writeAlphabetMode,
+} from '@/lib/game-module-storage';
+
+const getAttemptCount = () => useLearningStore.getState().attempts;
 
 const BUTTON_COLORS = [
   'border-orange-400',
@@ -48,11 +60,13 @@ export default function AlphabetPage() {
   const [celebrationLetter, setCelebrationLetter] = useState<string>('A');
   const [correctCount, setCorrectCount] = useState(0);
   const [totalAttempts, setTotalAttempts] = useState(0);
-  const [mode, setMode] = useState<'recognition' | 'phonics'>('recognition');
+  const [mode, setModeInternal] = useState<AlphabetGameMode>('recognition');
   const [isIntroPhase, setIsIntroPhase] = useState(true);
   const [introImageIndex, setIntroImageIndex] = useState(0);
   const [buttonColorIndex, setButtonColorIndex] = useState(0);
-  const [introImages, setIntroImages] = useState<Record<string, string>>({});
+  const [letterImages, setLetterImages] = useState<Record<string, string>>({});
+  const [letterOrder, setLetterOrder] = useState<string[]>(() => shuffleArray(ALPHABET));
+  const [orderIndex, setOrderIndex] = useState(0);
 
   const { speak, isPlaying } = useVoice();
   const { getHint, getEncouragement } = useAI();
@@ -81,11 +95,19 @@ export default function AlphabetPage() {
   
   const currentButtonColor = BUTTON_COLORS[buttonColorIndex % BUTTON_COLORS.length];
 
+  const setMode = useCallback((m: AlphabetGameMode) => {
+    setModeInternal(m);
+    writeAlphabetMode(m);
+  }, []);
+
+  useEffect(() => {
+    setModeInternal(readAlphabetMode());
+  }, []);
+
   useEffect(() => {
     setModule('alphabet');
     setLearnerId('demo-learner');
     
-    // Fetch images for intro
     fetch('/api/images')
       .then(res => res.json())
       .then(data => {
@@ -97,7 +119,7 @@ export default function AlphabetPage() {
             }
           });
         }
-        setIntroImages(imageMap);
+        setLetterImages(imageMap);
       })
       .catch(() => {});
   }, [setModule, setLearnerId]);
@@ -123,44 +145,48 @@ export default function AlphabetPage() {
     runIntro();
   }, []);
 
-  useEffect(() => {
-    if (!isIntroPhase && currentLetter === null) {
-      generateNewQuestion(true);
-    }
-  }, [isIntroPhase]);
+  const buildQuestionForTarget = useCallback(
+    (target: string, speakPrompt: boolean) => {
+      setCurrentLetter(target);
+      setCurrentItem(target);
+      resetAttempts();
+      setButtonColorIndex((prev) => (prev + 1) % BUTTON_COLORS.length);
 
-  useEffect(() => {
-    if (!isIntroPhase) {
-      generateNewQuestion();
-    }
-  }, [mode]);
+      const wrongOptions = ALPHABET.filter((l) => l !== target)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 3);
 
-  const generateNewQuestion = useCallback((speakPrompt = true) => {
-    const target = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
-    setCurrentLetter(target);
-    setCurrentItem(target);
-    resetAttempts();
-    setButtonColorIndex((prev) => (prev + 1) % BUTTON_COLORS.length);
+      const allOptions = [...wrongOptions, target].sort(() => Math.random() - 0.5);
+      setOptions(allOptions);
+      setFeedback(null);
 
-    const wrongOptions = ALPHABET.filter((l) => l !== target)
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 3);
-
-    const allOptions = [...wrongOptions, target].sort(() => Math.random() - 0.5);
-    setOptions(allOptions);
-    setFeedback(null);
-
-    if (voiceEnabled && speakPrompt) {
-      if (mode === 'recognition') {
-        const useName = shouldUseName();
-        const prompt = getQuestionPrompt('alphabet', target, childName || undefined, useName);
-        if (useName) markNameUsed();
-        speak(prompt);
-      } else {
-        speak(`Which letter makes the ${PHONICS[target]} sound?`);
+      if (voiceEnabled && speakPrompt) {
+        if (mode === 'recognition') {
+          const useName = shouldUseName();
+          const prompt = getQuestionPrompt('alphabet', target, childName || undefined, useName);
+          if (useName) markNameUsed();
+          speak(prompt);
+        } else if (mode === 'phonics') {
+          speak(`Which letter makes the ${PHONICS[target]} sound?`);
+        } else {
+          const word = WORDS[target];
+          speak(`${target} is for ${word}. Find the letter ${target}.`);
+        }
       }
-    }
-  }, [voiceEnabled, mode, shouldUseName, childName, markNameUsed, speak, setCurrentItem, resetAttempts]);
+    },
+    [voiceEnabled, mode, shouldUseName, childName, markNameUsed, speak, setCurrentItem, resetAttempts]
+  );
+
+  const buildQuestionRef = useRef(buildQuestionForTarget);
+  buildQuestionRef.current = buildQuestionForTarget;
+
+  useEffect(() => {
+    if (isIntroPhase) return;
+    const q = shuffleArray(ALPHABET);
+    setLetterOrder(q);
+    setOrderIndex(0);
+    buildQuestionRef.current(q[0], true);
+  }, [isIntroPhase, mode]);
 
   const handleAnswer = async (selected: string) => {
     const correct = selected === currentLetter;
@@ -201,19 +227,34 @@ export default function AlphabetPage() {
         setShowCelebration(false);
       }, 2500);
 
-      generateNewQuestion(true);
+      const nextIdx = (orderIndex + 1) % letterOrder.length;
+      setOrderIndex(nextIdx);
+      buildQuestionForTarget(letterOrder[nextIdx], true);
     } else {
-      setFeedback('Try again! 💪');
+      const wrongGuidance = getAlphabetWrongGuidance(
+        currentLetter!,
+        WORDS[currentLetter!],
+        PHONICS[currentLetter!],
+        childName || undefined,
+        shouldUseName()
+      );
+      setFeedback(wrongGuidance);
+
+      const t = currentLetter!;
+      const wrongOpts = ALPHABET.filter((l) => l !== t)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 3);
+      setOptions([...wrongOpts, t].sort(() => Math.random() - 0.5));
 
       if (voiceEnabled) {
-        speak('Oops! Try again!');
+        await speak(wrongGuidance);
       }
 
-      if (attempts >= 2 && hintsEnabled) {
+      if (getAttemptCount() >= 2 && hintsEnabled) {
         const hint = await getHint({
           moduleType: 'alphabet',
           currentItem: currentLetter!,
-          attempts,
+          attempts: getAttemptCount(),
           difficulty,
         });
         setFeedback(hint);
@@ -225,9 +266,13 @@ export default function AlphabetPage() {
   };
 
   const handleSpeakLetter = () => {
-    if (currentLetter) {
-      speak(`${currentLetter}. ${PHONICS[currentLetter]}. ${currentLetter} is for ${WORDS[currentLetter]}`);
+    if (!currentLetter) return;
+    if (mode === 'pictures') {
+      const word = WORDS[currentLetter];
+      speak(`${currentLetter} is for ${word}. Find the letter ${currentLetter}.`);
+      return;
     }
+    speak(`${currentLetter}. ${PHONICS[currentLetter]}. ${currentLetter} is for ${WORDS[currentLetter]}`);
   };
 
   const progressPercent = totalAttempts > 0 ? (correctCount / totalAttempts) * 100 : 0;
@@ -244,25 +289,14 @@ export default function AlphabetPage() {
       <div className="max-w-4xl mx-auto relative z-10 flex flex-col flex-1 w-full">
         {/* Header */}
         <div className="flex justify-between items-center mb-4">
-          <Link href="/">
-            <motion.button 
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="flex items-center gap-2 px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full shadow-md text-gray-600 font-medium hover:bg-white transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back
-            </motion.button>
-          </Link>
+          <KidBackButton />
           
           {/* Mode toggle */}
-          <div className="flex bg-white/80 backdrop-blur-sm rounded-full p-1 shadow-md">
+          <div className="flex flex-wrap justify-center max-w-[min(100%,22rem)] sm:max-w-none bg-white/80 backdrop-blur-sm rounded-full p-1 shadow-md gap-0.5">
             <motion.button
               whileTap={{ scale: 0.95 }}
               onClick={() => setMode('recognition')}
-              className={`px-4 py-2 rounded-full font-bold text-sm transition-all ${
+              className={`px-3 py-2 sm:px-4 rounded-full font-bold text-xs sm:text-sm transition-all ${
                 mode === 'recognition' 
                   ? 'bg-orange-400 text-white shadow-md' 
                   : 'text-gray-500 hover:text-gray-700'
@@ -273,13 +307,24 @@ export default function AlphabetPage() {
             <motion.button
               whileTap={{ scale: 0.95 }}
               onClick={() => setMode('phonics')}
-              className={`px-4 py-2 rounded-full font-bold text-sm transition-all ${
+              className={`px-3 py-2 sm:px-4 rounded-full font-bold text-xs sm:text-sm transition-all ${
                 mode === 'phonics' 
                   ? 'bg-orange-400 text-white shadow-md' 
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               Sounds
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setMode('pictures')}
+              className={`px-3 py-2 sm:px-4 rounded-full font-bold text-xs sm:text-sm transition-all ${
+                mode === 'pictures' 
+                  ? 'bg-orange-400 text-white shadow-md' 
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Pictures
             </motion.button>
           </div>
           
@@ -325,9 +370,9 @@ export default function AlphabetPage() {
                       transition={{ duration: 0.25 }}
                       className="relative w-48 h-48 md:w-64 md:h-64"
                     >
-                      {introImages[INTRO_LETTERS[introImageIndex]] ? (
+                      {letterImages[INTRO_LETTERS[introImageIndex]] ? (
                         <Image
-                          src={introImages[INTRO_LETTERS[introImageIndex]]}
+                          src={letterImages[INTRO_LETTERS[introImageIndex]]}
                           alt={INTRO_LETTERS[introImageIndex]}
                           fill
                           className="object-contain"
@@ -347,9 +392,9 @@ export default function AlphabetPage() {
             ) : (
               <>
                 <h2 className="text-2xl md:text-3xl font-bold text-center text-gray-700 mb-4">
-                  {mode === 'recognition'
-                    ? 'Find the Letter!'
-                    : `Which letter says "${PHONICS[currentLetter || 'A']}"?`}
+                  {mode === 'recognition' && 'Find the Letter!'}
+                  {mode === 'phonics' && `Which letter says "${PHONICS[currentLetter || 'A']}"?`}
+                  {mode === 'pictures' && 'What letter goes with this picture?'}
                 </h2>
                 
                 <AnimatePresence mode="wait">
@@ -380,6 +425,31 @@ export default function AlphabetPage() {
                       >
                         <span className="text-4xl">🔊</span>
                         <span>"{PHONICS[currentLetter || 'A']}"</span>
+                      </motion.div>
+                    )}
+                    {mode === 'pictures' && currentLetter && (
+                      <motion.div
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleSpeakLetter}
+                        className="relative w-52 h-52 sm:w-64 sm:h-64 md:w-72 md:h-72 mx-auto mb-4 cursor-pointer"
+                      >
+                        {letterImages[currentLetter] ? (
+                          <Image
+                            src={letterImages[currentLetter]}
+                            alt={`${WORDS[currentLetter]} for letter ${currentLetter}`}
+                            fill
+                            className="object-contain drop-shadow-md"
+                            sizes="(max-width: 768px) 208px, 288px"
+                          />
+                        ) : (
+                          <div
+                            className="w-full h-full flex items-center justify-center text-[6rem] sm:text-[8rem] font-black text-orange-400"
+                            style={{ textShadow: '4px 4px 0 rgba(0,0,0,0.1)' }}
+                          >
+                            {currentLetter}
+                          </div>
+                        )}
                       </motion.div>
                     )}
                   </motion.div>
@@ -419,7 +489,11 @@ export default function AlphabetPage() {
               <motion.button 
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => generateNewQuestion()}
+                onClick={() => {
+                  const nextIdx = (orderIndex + 1) % letterOrder.length;
+                  setOrderIndex(nextIdx);
+                  buildQuestionForTarget(letterOrder[nextIdx], true);
+                }}
                 className="px-6 py-2 md:px-8 md:py-3 bg-white rounded-full shadow-lg text-gray-600 font-bold text-base md:text-lg hover:bg-gray-50 transition-colors"
               >
                 Skip

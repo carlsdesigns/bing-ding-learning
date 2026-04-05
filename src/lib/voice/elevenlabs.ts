@@ -1,3 +1,10 @@
+/**
+ * ElevenLabs TTS integration + pronunciation helpers.
+ *
+ * All spoken text is normalized here before calling the API. To tune how a
+ * letter or word sounds, edit LETTER_SPELLOUTS, WORD_TTS_ALIASES, or the
+ * regex steps in preprocessText below.
+ */
 export interface VoiceConfig {
   voiceId?: string;
   stability?: number;
@@ -11,51 +18,116 @@ export interface VoiceSettings {
 
 const ELEVENLABS_API_URL = 'https://api.elevenlabs.io/v1';
 
-const LETTER_PRONUNCIATIONS: Record<string, string> = {
-  A: 'Ay', B: 'Bee', C: 'See', D: 'Dee', E: 'Ee',
-  F: 'Eff', G: 'Jee', H: 'Aych', I: 'Eye', J: 'Jay',
-  K: 'Kay', L: 'Ell', M: 'Em', N: 'En', O: 'Oh',
-  P: 'Pee', Q: 'Queue', R: 'Are', S: 'Ess', T: 'Tee',
-  U: 'You', V: 'Vee', W: 'Double-you', X: 'Ex', Y: 'Why', Z: 'Zee',
+/** Bump when preprocess rules change so cached MP3s are regenerated. */
+export const TTS_NORMALIZATION_VERSION = 2;
+
+/**
+ * How to say each letter name (avoids TTS reading "R" as "are", "H" as a
+ * mumbled digraph, "U" as the pronoun "you", etc.).
+ */
+const LETTER_SPELLOUTS: Record<string, string> = {
+  A: 'Ay',
+  B: 'Bee',
+  C: 'See',
+  D: 'Dee',
+  E: 'Ee',
+  F: 'Eff',
+  G: 'Jee',
+  H: 'Aitch',
+  I: 'Eye',
+  J: 'Jay',
+  K: 'Kay',
+  L: 'Ell',
+  M: 'Em',
+  N: 'En',
+  O: 'Oh',
+  P: 'Pee',
+  Q: 'Cue',
+  R: 'Arr',
+  S: 'Ess',
+  T: 'Tee',
+  U: 'Yoo',
+  V: 'Vee',
+  W: 'Dubbul yoo',
+  X: 'Ex',
+  Y: 'Why',
+  Z: 'Zee',
 };
+
+/** Whole-word respellings for words the model often mumbles or mis-stresses. */
+const WORD_TTS_ALIASES: Record<string, string> = {
+  yacht: 'yot',
+  violin: 'vy-oh-lin',
+  moon: 'mewn',
+  lion: 'lie-un',
+  hat: 'haht',
+};
+
+function applyWordAliases(text: string): string {
+  let out = text;
+  for (const [word, sayAs] of Object.entries(WORD_TTS_ALIASES)) {
+    const re = new RegExp(`\\b${word}\\b`, 'gi');
+    out = out.replace(re, sayAs);
+  }
+  return out;
+}
 
 function preprocessText(text: string): string {
   let processed = text;
-  
-  // Replace single letter references with phonetic pronunciations
-  // Match patterns like "letter C" or "the letter A"
+
+  // Phrases with digit 0 before generic digit replacement (avoid breaking /^0/)
+  processed = processed.replace(
+    /^0\s+is\s+for\s+zero\b/gi,
+    'Zee roh is for the number zee roh'
+  );
+  processed = processed.replace(/^0\s+is\s+for\b/gi, 'Zee roh is for');
+  processed = processed.replace(/\bnumber\s+0\b/gi, 'number zee roh');
+  processed = processed.replace(/\bFind\s+the\s+number\s+0\b/gi, 'Find the number zee roh');
+  processed = processed.replace(/\bThat'?s\s+0\b/gi, "That's zee roh");
+
+  // Remaining lone digit 0 (not inside 10, 20, …)
+  processed = processed.replace(/(?<!\d)0(?!\d)/g, 'zee roh');
+
+  // Single letter + period (e.g. "H. huh. H is for …" from the letter game)
+  processed = processed.replace(/\b([A-Z])\.\s/g, (match, letter: string) => {
+    const pronunciation = LETTER_SPELLOUTS[letter.toUpperCase()];
+    return pronunciation ? `${pronunciation}. ` : match;
+  });
+
+  // "letter C" / "the letter A"
   processed = processed.replace(
     /\b(letter|the letter)\s+([A-Z])\b/gi,
-    (match, prefix, letter) => {
-      const pronunciation = LETTER_PRONUNCIATIONS[letter.toUpperCase()];
+    (match, prefix: string, letter: string) => {
+      const pronunciation = LETTER_SPELLOUTS[letter.toUpperCase()];
       return pronunciation ? `${prefix} ${pronunciation}` : match;
     }
   );
-  
-  // Replace standalone single letters at word boundaries
-  // "Find the C" -> "Find the See"
-  processed = processed.replace(
-    /\bthe\s+([A-Z])\b(?!\w)/gi,
-    (match, letter) => {
-      const pronunciation = LETTER_PRONUNCIATIONS[letter.toUpperCase()];
-      return pronunciation ? `the ${pronunciation}` : match;
-    }
-  );
-  
-  // Replace "X is for" patterns (e.g., "A is for Apple" -> "Ay is for Apple")
-  processed = processed.replace(
-    /^([A-Z])\s+is\s+for\b/gi,
-    (match, letter) => {
-      const pronunciation = LETTER_PRONUNCIATIONS[letter.toUpperCase()];
-      return pronunciation ? `${pronunciation} is for` : match;
-    }
-  );
-  
-  // Add slight pause at end to prevent cutoff
+
+  // "Find the Y" / "the R" (uppercase single letter as token)
+  processed = processed.replace(/\bthe\s+([A-Z])\b(?!\w)/gi, (match, letter: string) => {
+    const pronunciation = LETTER_SPELLOUTS[letter.toUpperCase()];
+    return pronunciation ? `the ${pronunciation}` : match;
+  });
+
+  // "Spot B." / "Tap 3" — "Find B" style (letter not after "the")
+  processed = processed.replace(/\b(Find|Spot|Tap)\s+([A-Z])\b(?![a-z])/gi, (match, verb, letter) => {
+    const pronunciation = LETTER_SPELLOUTS[(letter as string).toUpperCase()];
+    return pronunciation ? `${verb} ${pronunciation}` : match;
+  });
+
+  // "A is for Apple" → spell letter name only at string start (playground / warm-cache)
+  processed = processed.replace(/^([A-Z])\s+is\s+for\b/gi, (match, letter: string) => {
+    const pronunciation = LETTER_SPELLOUTS[letter.toUpperCase()];
+    return pronunciation ? `${pronunciation} is for` : match;
+  });
+
+  // Tricky dictionary words (yacht, violin, …)
+  processed = applyWordAliases(processed);
+
   if (!processed.endsWith('.') && !processed.endsWith('!') && !processed.endsWith('?')) {
     processed += '.';
   }
-  
+
   return processed;
 }
 

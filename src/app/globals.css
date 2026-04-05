@@ -21,7 +21,8 @@ html {
 }
 
 body {
-  @apply bg-white min-h-screen;
+  min-height: 100vh;
+  background-color: #fff9fc;
   font-family: var(--font-body);
   overflow-x: hidden;
 }

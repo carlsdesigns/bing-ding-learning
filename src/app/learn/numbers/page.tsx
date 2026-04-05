@@ -1,17 +1,36 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import Link from 'next/link';
+import { KidBackButton } from '@/components/ui/kid-back-button';
 import Image from 'next/image';
-import { TouchButton } from '@/components/touch/touch-button';
 import { Celebration } from '@/components/celebration';
 import { GameDecorativeShapes } from '@/components/ui/decorative-shapes';
 import { useVoice, useAI, useSession } from '@/hooks';
 import { useLearningStore, useChildStore } from '@/stores';
-import { getGameIntro, getCorrectMessage, getQuestionPrompt } from '@/lib/game-messages';
+import {
+  getGameIntro,
+  getCorrectMessage,
+  getQuestionPrompt,
+  getNumbersWrongGuidance,
+  shuffleArray,
+} from '@/lib/game-messages';
+import {
+  type NumbersGameMode,
+  readNumbersMode,
+  writeNumbersMode,
+} from '@/lib/game-module-storage';
+import { NUMBER_CONFIG } from '@/../scripts/image-config';
+
+const getAttemptCount = () => useLearningStore.getState().attempts;
 
 const NUMBERS = Array.from({ length: 10 }, (_, i) => i);
+
+function numberPicturesSpeech(target: number): string {
+  const key = target.toString();
+  const desc = NUMBER_CONFIG[key]?.description ?? `the number ${target}`;
+  return `${desc}. Find the number ${target}.`;
+}
 
 const BUTTON_COLORS = [
   'border-lime-400',
@@ -31,10 +50,13 @@ export default function NumbersPage() {
   const [celebrationNumber, setCelebrationNumber] = useState<string>('1');
   const [correctCount, setCorrectCount] = useState(0);
   const [totalAttempts, setTotalAttempts] = useState(0);
+  const [mode, setModeInternal] = useState<NumbersGameMode>('numeral');
   const [isIntroPhase, setIsIntroPhase] = useState(true);
   const [introNumberIndex, setIntroNumberIndex] = useState(0);
   const [buttonColorIndex, setButtonColorIndex] = useState(0);
-  const [introImages, setIntroImages] = useState<Record<string, string>>({});
+  const [numberImages, setNumberImages] = useState<Record<string, string>>({});
+  const [numberOrder, setNumberOrder] = useState<number[]>(() => shuffleArray(NUMBERS));
+  const [orderIndex, setOrderIndex] = useState(0);
 
   const { speak, isPlaying } = useVoice();
   const { getHint, getEncouragement } = useAI();
@@ -63,11 +85,19 @@ export default function NumbersPage() {
   
   const currentButtonColor = BUTTON_COLORS[buttonColorIndex % BUTTON_COLORS.length];
 
+  const setMode = useCallback((m: NumbersGameMode) => {
+    setModeInternal(m);
+    writeNumbersMode(m);
+  }, []);
+
+  useEffect(() => {
+    setModeInternal(readNumbersMode());
+  }, []);
+
   useEffect(() => {
     setModule('numbers');
     setLearnerId('demo-learner');
     
-    // Fetch images for intro
     fetch('/api/images')
       .then(res => res.json())
       .then(data => {
@@ -79,7 +109,7 @@ export default function NumbersPage() {
             }
           });
         }
-        setIntroImages(imageMap);
+        setNumberImages(imageMap);
       })
       .catch(() => {});
   }, [setModule, setLearnerId]);
@@ -105,34 +135,45 @@ export default function NumbersPage() {
     runIntro();
   }, []);
 
+  const buildQuestionForTarget = useCallback(
+    (target: number, speakPrompt: boolean) => {
+      setCurrentNumber(target);
+      setCurrentItem(target.toString());
+      resetAttempts();
+      setButtonColorIndex((prev) => (prev + 1) % BUTTON_COLORS.length);
+
+      const wrongOptions = NUMBERS.filter((n) => n !== target)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 3);
+
+      const allOptions = [...wrongOptions, target].sort(() => Math.random() - 0.5);
+      setOptions(allOptions);
+      setFeedback(null);
+
+      if (voiceEnabled && speakPrompt) {
+        if (mode === 'numeral') {
+          const useName = shouldUseName();
+          const prompt = getQuestionPrompt('numbers', target.toString(), childName || undefined, useName);
+          if (useName) markNameUsed();
+          speak(prompt);
+        } else {
+          speak(numberPicturesSpeech(target));
+        }
+      }
+    },
+    [voiceEnabled, mode, shouldUseName, childName, markNameUsed, speak, setCurrentItem, resetAttempts]
+  );
+
+  const buildQuestionRef = useRef(buildQuestionForTarget);
+  buildQuestionRef.current = buildQuestionForTarget;
+
   useEffect(() => {
-    if (!isIntroPhase && currentNumber === null) {
-      generateNewQuestion(true);
-    }
-  }, [isIntroPhase]);
-
-  const generateNewQuestion = useCallback((speakPrompt = true) => {
-    const target = NUMBERS[Math.floor(Math.random() * NUMBERS.length)];
-    setCurrentNumber(target);
-    setCurrentItem(target.toString());
-    resetAttempts();
-    setButtonColorIndex((prev) => (prev + 1) % BUTTON_COLORS.length);
-
-    const wrongOptions = NUMBERS.filter((n) => n !== target)
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 3);
-
-    const allOptions = [...wrongOptions, target].sort(() => Math.random() - 0.5);
-    setOptions(allOptions);
-    setFeedback(null);
-
-    if (voiceEnabled && speakPrompt) {
-      const useName = shouldUseName();
-      const prompt = getQuestionPrompt('numbers', target.toString(), childName || undefined, useName);
-      if (useName) markNameUsed();
-      speak(prompt);
-    }
-  }, [voiceEnabled, shouldUseName, childName, markNameUsed, speak, setCurrentItem, resetAttempts]);
+    if (isIntroPhase) return;
+    const q = shuffleArray(NUMBERS);
+    setNumberOrder(q);
+    setOrderIndex(0);
+    buildQuestionRef.current(q[0], true);
+  }, [isIntroPhase, mode]);
 
   const handleAnswer = async (selected: number) => {
     const correct = selected === currentNumber;
@@ -155,7 +196,7 @@ export default function NumbersPage() {
 
       try {
         await recordActivity({
-          activityType: 'recognition',
+          activityType: mode,
           target: currentNumber!.toString(),
           correct: true,
           attempts,
@@ -173,19 +214,32 @@ export default function NumbersPage() {
         setShowCelebration(false);
       }, 2000);
 
-      generateNewQuestion(true);
+      const nextIdx = (orderIndex + 1) % numberOrder.length;
+      setOrderIndex(nextIdx);
+      buildQuestionForTarget(numberOrder[nextIdx], true);
     } else {
-      setFeedback('Try again! 💪');
+      const wrongGuidance = getNumbersWrongGuidance(
+        currentNumber!.toString(),
+        childName || undefined,
+        shouldUseName()
+      );
+      setFeedback(wrongGuidance);
+
+      const t = currentNumber!;
+      const wrongOpts = NUMBERS.filter((n) => n !== t)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 3);
+      setOptions([...wrongOpts, t].sort(() => Math.random() - 0.5));
 
       if (voiceEnabled) {
-        speak('Oops! Try again!');
+        await speak(wrongGuidance);
       }
 
-      if (attempts >= 2 && hintsEnabled) {
+      if (getAttemptCount() >= 2 && hintsEnabled) {
         const hint = await getHint({
           moduleType: 'numbers',
           currentItem: currentNumber!.toString(),
-          attempts,
+          attempts: getAttemptCount(),
           difficulty,
         });
         setFeedback(hint);
@@ -197,9 +251,12 @@ export default function NumbersPage() {
   };
 
   const handleSpeakNumber = () => {
-    if (currentNumber !== null) {
-      speak(`This is the number ${currentNumber}`);
+    if (currentNumber === null) return;
+    if (mode === 'pictures') {
+      speak(numberPicturesSpeech(currentNumber));
+      return;
     }
+    speak(`This is the number ${currentNumber}`);
   };
 
   const progressPercent = totalAttempts > 0 ? (correctCount / totalAttempts) * 100 : 0;
@@ -215,21 +272,35 @@ export default function NumbersPage() {
       
       <div className="max-w-4xl mx-auto relative z-10 flex flex-col flex-1 w-full">
         {/* Header */}
-        <div className="flex justify-between items-center mb-4">
-          <Link href="/">
-            <motion.button 
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="flex items-center gap-2 px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full shadow-md text-gray-600 font-medium hover:bg-white transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back
-            </motion.button>
-          </Link>
+        <div className="flex justify-between items-center mb-4 gap-2">
+          <KidBackButton />
           
-          <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm px-5 py-2 rounded-full shadow-md">
+          <div className="flex flex-wrap justify-center max-w-[min(100%,18rem)] sm:max-w-none bg-white/80 backdrop-blur-sm rounded-full p-1 shadow-md gap-0.5">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setMode('numeral')}
+              className={`px-3 py-2 sm:px-4 rounded-full font-bold text-xs sm:text-sm transition-all ${
+                mode === 'numeral'
+                  ? 'bg-lime-400 text-white shadow-md'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Numbers
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setMode('pictures')}
+              className={`px-3 py-2 sm:px-4 rounded-full font-bold text-xs sm:text-sm transition-all ${
+                mode === 'pictures'
+                  ? 'bg-lime-400 text-white shadow-md'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Pictures
+            </motion.button>
+          </div>
+          
+          <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm px-5 py-2 rounded-full shadow-md shrink-0">
             <span className="text-2xl">⭐</span>
             <span className="text-xl font-bold text-gray-700">
               {correctCount}
@@ -271,9 +342,9 @@ export default function NumbersPage() {
                       transition={{ duration: 0.25 }}
                       className="relative w-48 h-48 md:w-64 md:h-64"
                     >
-                      {introImages[INTRO_NUMBERS[introNumberIndex].toString()] ? (
+                      {numberImages[INTRO_NUMBERS[introNumberIndex].toString()] ? (
                         <Image
-                          src={introImages[INTRO_NUMBERS[introNumberIndex].toString()]}
+                          src={numberImages[INTRO_NUMBERS[introNumberIndex].toString()]}
                           alt={INTRO_NUMBERS[introNumberIndex].toString()}
                           fill
                           className="object-contain"
@@ -293,26 +364,54 @@ export default function NumbersPage() {
             ) : (
               <>
                 <h2 className="text-2xl md:text-3xl font-bold text-center text-gray-700 mb-4">
-                  Find the Number!
+                  {mode === 'numeral' && 'Find the Number!'}
+                  {mode === 'pictures' && 'What number goes with this picture?'}
                 </h2>
                 
                 <AnimatePresence mode="wait">
                   <motion.div
-                    key={currentNumber}
+                    key={`${currentNumber}-${mode}`}
                     initial={{ scale: 0, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     exit={{ scale: 0, opacity: 0 }}
                     className={`text-center ${showCelebration ? 'animate-celebrate' : ''}`}
                   >
-                    <motion.div
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={handleSpeakNumber}
-                      className="inline-block text-[8rem] md:text-[10rem] font-black text-lime-500 mb-4 cursor-pointer leading-none"
-                      style={{ textShadow: '4px 4px 0 rgba(0,0,0,0.1)' }}
-                    >
-                      {currentNumber}
-                    </motion.div>
+                    {mode === 'numeral' && currentNumber !== null && (
+                      <motion.div
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={handleSpeakNumber}
+                        className="inline-block text-[8rem] md:text-[10rem] font-black text-lime-500 mb-4 cursor-pointer leading-none"
+                        style={{ textShadow: '4px 4px 0 rgba(0,0,0,0.1)' }}
+                      >
+                        {currentNumber}
+                      </motion.div>
+                    )}
+                    {mode === 'pictures' && currentNumber !== null && (
+                      <motion.div
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleSpeakNumber}
+                        className="relative w-52 h-52 sm:w-64 sm:h-64 md:w-72 md:h-72 mx-auto mb-4 cursor-pointer"
+                      >
+                        {numberImages[currentNumber.toString()] ? (
+                          <Image
+                            src={numberImages[currentNumber.toString()]}
+                            alt={`${NUMBER_CONFIG[currentNumber.toString()]?.description ?? currentNumber}`}
+                            fill
+                            className="object-contain drop-shadow-md"
+                            sizes="(max-width: 768px) 208px, 288px"
+                          />
+                        ) : (
+                          <div
+                            className="w-full h-full flex items-center justify-center text-[6rem] sm:text-[8rem] font-black text-lime-500"
+                            style={{ textShadow: '4px 4px 0 rgba(0,0,0,0.1)' }}
+                          >
+                            {currentNumber}
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
                   </motion.div>
                 </AnimatePresence>
 
@@ -350,7 +449,11 @@ export default function NumbersPage() {
               <motion.button 
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => generateNewQuestion()}
+                onClick={() => {
+                  const nextIdx = (orderIndex + 1) % numberOrder.length;
+                  setOrderIndex(nextIdx);
+                  buildQuestionForTarget(numberOrder[nextIdx], true);
+                }}
                 className="px-6 py-2 md:px-8 md:py-3 bg-white rounded-full shadow-lg text-gray-600 font-bold text-base md:text-lg hover:bg-gray-50 transition-colors"
               >
                 Skip

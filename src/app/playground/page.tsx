@@ -1,73 +1,46 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import Link from 'next/link';
+import { useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { KidBackButton } from '@/components/ui/kid-back-button';
 import { KeyboardBar } from '@/components/playground/keyboard-bar';
 import { PlaygroundCanvas } from '@/components/playground/canvas';
 import { usePlaygroundStore } from '@/stores/playground-store';
 import { useChildStore } from '@/stores/child-store';
 import { getGameIntro } from '@/lib/game-messages';
+import { useVoice } from '@/hooks';
+import { tryClaimPlaygroundIntroSpeech } from '@/lib/playground-intro-guard';
 
 export default function PlaygroundPage() {
-  const { 
-    preloadImages, 
-    isImagesLoaded,
-    isSoundEnabled,
-  } = usePlaygroundStore();
-  
+  const { preloadImages, isImagesLoaded, isSoundEnabled } = usePlaygroundStore();
   const { childName } = useChildStore();
-  const [hasPlayedIntro, setHasPlayedIntro] = useState(false);
-  const [isPlayingIntro, setIsPlayingIntro] = useState(false);
+  const { speak } = useVoice();
 
   useEffect(() => {
     preloadImages();
   }, [preloadImages]);
 
-  // Play intro when images are loaded
   useEffect(() => {
-    const playIntro = async () => {
-      if (isImagesLoaded && !hasPlayedIntro && isSoundEnabled) {
-        setIsPlayingIntro(true);
-        setHasPlayedIntro(true);
-        
-        const introMessage = getGameIntro('playground', childName || undefined);
-        
-        try {
-          const response = await fetch('/api/voice/speak', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: introMessage }),
-          });
-          
-          if (response.ok) {
-            const audioBlob = await response.blob();
-            const audioUrl = URL.createObjectURL(audioBlob);
-            const audio = new Audio(audioUrl);
-            
-            audio.onended = () => {
-              URL.revokeObjectURL(audioUrl);
-              setIsPlayingIntro(false);
-            };
-            
-            audio.onerror = () => {
-              URL.revokeObjectURL(audioUrl);
-              setIsPlayingIntro(false);
-            };
-            
-            await audio.play();
-          } else {
-            setIsPlayingIntro(false);
-          }
-        } catch (error) {
+    if (!isImagesLoaded || !isSoundEnabled) return;
+    if (!tryClaimPlaygroundIntroSpeech()) return;
+
+    const introMessage = getGameIntro('playground', childName || undefined);
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await speak(introMessage);
+      } catch (error) {
+        if (!cancelled) {
           console.error('Failed to play intro:', error);
-          setIsPlayingIntro(false);
         }
       }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-    
-    playIntro();
-  }, [isImagesLoaded, hasPlayedIntro, isSoundEnabled, childName]);
+  }, [isImagesLoaded, isSoundEnabled, childName, speak]);
 
   if (!isImagesLoaded) {
     return (
@@ -84,25 +57,15 @@ export default function PlaygroundPage() {
   }
 
   return (
-    <main className="h-screen flex flex-col overflow-hidden relative">
+    <main className="h-screen flex flex-col overflow-hidden relative bg-white">
       {/* Full-screen canvas with background */}
       <div className="absolute inset-0 z-0">
         <PlaygroundCanvas />
       </div>
       
-      {/* Back button - top left */}
-      <Link href="/" className="absolute top-4 left-4 z-[300]">
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="flex items-center gap-2 px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full shadow-md text-gray-600 font-medium hover:bg-white transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          Back
-        </motion.button>
-      </Link>
+      <div className="absolute top-4 left-4 z-[300]">
+        <KidBackButton />
+      </div>
 
       {/* Spacer to push keyboard to bottom */}
       <div className="flex-1 pointer-events-none" />

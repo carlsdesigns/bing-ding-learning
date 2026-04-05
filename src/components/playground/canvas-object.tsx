@@ -2,7 +2,11 @@
 
 import { useRef, useState, useEffect } from 'react';
 import { motion, useMotionValue, animate } from 'framer-motion';
-import { usePlaygroundStore } from '@/stores/playground-store';
+import {
+  usePlaygroundStore,
+  PLAYGROUND_STICKER_BASE_SIZE_PERCENT,
+  playgroundCanvasStickerSizeMultiplier,
+} from '@/stores/playground-store';
 
 interface CanvasObjectData {
   id: string;
@@ -20,8 +24,6 @@ interface CanvasObjectProps {
   initialOffset: { x: number; y: number };
 }
 
-const BASE_SIZE_PERCENT = 0.151; // 15.1% of screen width (reduced 30% from 21.6%)
-
 export function CanvasObject({ object, initialOffset }: CanvasObjectProps) {
   const {
     updateObjectPosition,
@@ -38,7 +40,10 @@ export function CanvasObject({ object, initialOffset }: CanvasObjectProps) {
   const initialScaleRef = useRef<number>(object.scale);
   const elementRef = useRef<HTMLDivElement>(null);
 
-  const baseSize = canvasSize.width * BASE_SIZE_PERCENT;
+  const baseSize =
+    canvasSize.width *
+    PLAYGROUND_STICKER_BASE_SIZE_PERCENT *
+    playgroundCanvasStickerSizeMultiplier(canvasSize);
   
   // Calculate actual display dimensions based on image aspect ratio
   // This makes the hit target match the visible image, not a square bounding box
@@ -104,26 +109,9 @@ export function CanvasObject({ object, initialOffset }: CanvasObjectProps) {
   const handleDragEnd = () => {
     setIsDragging(false);
     scaleValue.set(1);
-    
     const currentX = x.get();
     const currentY = y.get();
-    
-    // Constrain to canvas bounds using actual dimensions
-    const minX = -currentWidth * 0.5;
-    const maxX = canvasSize.width - currentWidth * 0.5;
-    const minY = -currentHeight * 0.5;
-    const maxY = canvasSize.height - currentHeight * 0.5;
-    
-    const constrainedX = Math.max(minX, Math.min(maxX, currentX));
-    const constrainedY = Math.max(minY, Math.min(maxY, currentY));
-    
-    // Snap to constrained position if needed
-    if (constrainedX !== currentX || constrainedY !== currentY) {
-      x.set(constrainedX);
-      y.set(constrainedY);
-    }
-    
-    updateObjectPosition(object.id, constrainedX, constrainedY);
+    updateObjectPosition(object.id, currentX, currentY);
   };
 
   // Handle pinch-to-zoom
