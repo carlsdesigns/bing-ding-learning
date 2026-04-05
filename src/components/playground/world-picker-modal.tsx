@@ -134,8 +134,8 @@ export function WorldPickerModal({ isOpen, onClose }: WorldPickerModalProps) {
       }
 
       if (newImagePath) {
-        await loadBackgrounds();
         registerUserBackground(newImagePath);
+        await loadBackgrounds();
         setBackground(newImagePath);
         setCustomPrompt('');
         onClose();

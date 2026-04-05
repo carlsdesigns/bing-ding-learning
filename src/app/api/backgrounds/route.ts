@@ -24,9 +24,20 @@ export async function GET() {
     // User-generated worlds in Blob (Vercel production, or local/preview when token is set)
     if (isVercel || hasBlobToken) {
       try {
-        const { blobs } = await list({ prefix: 'images/backgrounds/world_custom_' });
-        const blobBackgrounds = blobs.map((blob) => blob.url);
-        backgrounds.push(...blobBackgrounds);
+        const blobUrls: string[] = [];
+        let cursor: string | undefined;
+        for (;;) {
+          const { blobs, hasMore, cursor: nextCursor } = await list({
+            prefix: 'images/backgrounds/world_custom_',
+            limit: 1000,
+            cursor,
+          });
+          blobUrls.push(...blobs.map((b) => b.url));
+          if (!hasMore) break;
+          cursor = nextCursor;
+          if (!cursor) break;
+        }
+        backgrounds.push(...blobUrls);
       } catch (blobError) {
         console.error('Error fetching blob backgrounds:', blobError);
       }

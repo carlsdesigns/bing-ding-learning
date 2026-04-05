@@ -1,5 +1,10 @@
 import { create } from 'zustand';
 import { LETTER_CONFIG, NUMBER_CONFIG } from '@/../scripts/image-config';
+import {
+  mergeWorldUrlLists,
+  readStoredUserWorldUrls,
+  rememberUserWorldUrl,
+} from '@/lib/playground-user-worlds';
 
 interface CanvasObject {
   id: string;
@@ -397,26 +402,56 @@ export const usePlaygroundStore = create<PlaygroundState & PlaygroundActions>((s
 
   // Background actions
   setBackground: (background: string | null) => {
+    if (background?.includes('world_custom')) {
+      rememberUserWorldUrl(background);
+    }
     set({ currentBackground: background });
   },
 
   loadBackgrounds: async () => {
     try {
+      const state = get();
+      const prev = state.availableBackgrounds;
+      const currentBg = state.currentBackground;
+      const fromStorage =
+        typeof window !== 'undefined' ? readStoredUserWorldUrls() : [];
       const response = await fetch('/api/backgrounds');
-      if (response.ok) {
-        const data = await response.json();
-        set({ availableBackgrounds: data.backgrounds || [] });
-      }
+      const fromApi = response.ok
+        ? ((await response.json()) as { backgrounds?: string[] }).backgrounds || []
+        : [];
+      const activeCustom =
+        currentBg && currentBg.includes('world_custom') ? [currentBg] : [];
+      const merged = mergeWorldUrlLists(
+        fromApi,
+        fromStorage,
+        prev,
+        activeCustom
+      );
+      set({ availableBackgrounds: merged });
     } catch (error) {
       console.error('Failed to load backgrounds:', error);
+      const state = get();
+      const prev = state.availableBackgrounds;
+      const currentBg = state.currentBackground;
+      const fromStorage =
+        typeof window !== 'undefined' ? readStoredUserWorldUrls() : [];
+      const activeCustom =
+        currentBg && currentBg.includes('world_custom') ? [currentBg] : [];
+      set({
+        availableBackgrounds: mergeWorldUrlLists(
+          fromStorage,
+          prev,
+          activeCustom
+        ),
+      });
     }
   },
 
   registerUserBackground: (url: string) => {
     if (!url.trim()) return;
-    set((state) => {
-      if (state.availableBackgrounds.includes(url)) return state;
-      return { availableBackgrounds: [url, ...state.availableBackgrounds] };
-    });
+    rememberUserWorldUrl(url);
+    set((state) => ({
+      availableBackgrounds: mergeWorldUrlLists([url], state.availableBackgrounds),
+    }));
   },
 }));

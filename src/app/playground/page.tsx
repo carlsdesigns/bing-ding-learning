@@ -12,13 +12,19 @@ import { useVoice } from '@/hooks';
 import { tryClaimPlaygroundIntroSpeech } from '@/lib/playground-intro-guard';
 
 export default function PlaygroundPage() {
-  const { preloadImages, isImagesLoaded, isSoundEnabled } = usePlaygroundStore();
+  const { preloadImages, loadBackgrounds, isImagesLoaded, isSoundEnabled } =
+    usePlaygroundStore();
   const { childName } = useChildStore();
   const { speak } = useVoice();
 
   useEffect(() => {
     preloadImages();
   }, [preloadImages]);
+
+  useEffect(() => {
+    if (!isImagesLoaded) return;
+    void loadBackgrounds();
+  }, [isImagesLoaded, loadBackgrounds]);
 
   useEffect(() => {
     if (!isImagesLoaded || !isSoundEnabled) return;
