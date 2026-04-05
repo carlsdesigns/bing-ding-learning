@@ -1,11 +1,14 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { resolveGoogleGeminiModel } from '../resolve-gemini-model';
 import type { AIProviderClient, AIMessage, AIConfig, AIResponse, LearningContext } from '../types';
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
 
 export const googleClient: AIProviderClient = {
   async chat(messages: AIMessage[], config?: Partial<AIConfig>): Promise<AIResponse> {
-    const modelName = config?.model || process.env.GOOGLE_MODEL || 'gemini-pro';
+    const modelName = resolveGoogleGeminiModel(
+      config?.model || process.env.GOOGLE_MODEL
+    );
     const model = genAI.getGenerativeModel({ model: modelName });
 
     const systemMessage = messages.find((m) => m.role === 'system');

@@ -1,252 +1,377 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
+import { useChildStore } from '@/stores';
+import {
+  getProfileForDisplayName,
+  computeReportStats,
+  buildGeminiPrompt,
+  readCachedInsights,
+  writeCachedInsights,
+  parseInsightSections,
+  clearProfileData,
+  storageWarningNeeded,
+  type LetterModeStats,
+} from '@/lib/progress-report';
 
-interface ProgressReport {
-  learnerId: string;
-  learnerName: string;
-  moduleType: string;
-  totalSessions: number;
-  totalTimeSpentMs: number;
-  itemsProgress: ItemProgress[];
-  overallMastery: number;
-  streakDays: number;
-  recentActivity: RecentActivity[];
-}
-
-interface ItemProgress {
-  item: string;
-  masteryLevel: number;
-  totalAttempts: number;
-  correctCount: number;
-  accuracy: number;
-}
-
-interface RecentActivity {
-  date: string;
-  moduleType: string;
-  activitiesCount: number;
-  correctCount: number;
-  accuracy: number;
-}
-
-export default function ReportsPage() {
-  const [report, setReport] = useState<ProgressReport | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedModule, setSelectedModule] = useState<'numbers' | 'alphabet' | 'all'>('all');
-
-  useEffect(() => {
-    fetchReport();
-  }, [selectedModule]);
-
-  const fetchReport = async () => {
-    setLoading(true);
-    try {
-      const moduleParam = selectedModule !== 'all' ? `&moduleType=${selectedModule}` : '';
-      const response = await fetch(`/api/reports/demo-learner?type=full${moduleParam}`);
-      if (response.ok) {
-        const data = await response.json();
-        setReport(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch report:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const formatTime = (ms: number) => {
-    const minutes = Math.floor(ms / 60000);
-    if (minutes < 60) return `${minutes} min`;
-    const hours = Math.floor(minutes / 60);
-    return `${hours}h ${minutes % 60}m`;
-  };
+function ModeBlock({
+  title,
+  stats,
+  extraLine,
+}: {
+  title: string;
+  stats: LetterModeStats;
+  extraLine?: string;
+}) {
+  if (stats.totalAttempts === 0) {
+    return (
+      <div className="rounded-2xl border border-gray-100 bg-white/90 p-5 shadow-sm">
+        <h3 className="text-lg font-bold text-gray-800 mb-2">{title}</h3>
+        <p className="text-gray-500 text-sm">No attempts in this mode yet.</p>
+      </div>
+    );
+  }
 
   return (
-    <main className="min-h-screen p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <Link href="/">
-            <Button variant="ghost" size="sm">
-              ← Back
-            </Button>
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-800">Progress Report</h1>
-          <div className="flex gap-2">
-            {['all', 'numbers', 'alphabet'].map((mod) => (
-              <Button
-                key={mod}
-                variant={selectedModule === mod ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedModule(mod as typeof selectedModule)}
+    <div className="rounded-2xl border border-gray-100 bg-white/90 p-5 shadow-sm space-y-3">
+      <h3 className="text-lg font-bold text-gray-800">{title}</h3>
+      <p className="text-2xl font-black text-sky-600">{stats.accuracyPct}%</p>
+      <p className="text-sm text-gray-500">
+        {stats.correct} correct of {stats.totalAttempts} · Trend:{' '}
+        <span className="font-semibold text-gray-700">{stats.trend}</span>
+      </p>
+      {stats.mastered.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+            Strong ✓
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {stats.mastered.map((x: string) => (
+              <span
+                key={x}
+                className="px-2 py-0.5 rounded-lg bg-lime-100 text-lime-900 text-sm font-bold"
               >
-                {mod.charAt(0).toUpperCase() + mod.slice(1)}
-              </Button>
+                {x}
+              </span>
             ))}
           </div>
         </div>
-
-        {loading ? (
-          <div className="text-center text-xl text-gray-500">Loading...</div>
-        ) : report ? (
-          <div className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+      )}
+      {stats.struggling.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+            Needs practice
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {stats.struggling.map((x: string) => (
+              <span
+                key={x}
+                className="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 text-sm font-bold"
               >
-                <Card className="text-center bg-gradient-to-br from-primary-100 to-primary-200">
-                  <CardContent className="pt-6">
-                    <div className="text-5xl font-bold text-primary-700">
-                      {report.overallMastery}%
-                    </div>
-                    <div className="text-lg text-primary-600 mt-2">Overall Mastery</div>
-                  </CardContent>
-                </Card>
-              </motion.div>
+                {x}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {stats.confusionPairs.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+            Often mixed up
+          </p>
+          <ul className="text-sm text-gray-700 space-y-1">
+            {stats.confusionPairs.slice(0, 6).map((p: LetterModeStats['confusionPairs'][number]) => (
+              <li key={`${p.target}-${p.picked}`}>
+                Picks <strong>{p.picked}</strong> when shown <strong>{p.target}</strong> ({p.count}×)
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {extraLine && <p className="text-sm text-gray-600">{extraLine}</p>}
+    </div>
+  );
+}
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-              >
-                <Card className="text-center bg-gradient-to-br from-secondary-100 to-secondary-200">
-                  <CardContent className="pt-6">
-                    <div className="text-5xl font-bold text-secondary-700">
-                      {report.totalSessions}
-                    </div>
-                    <div className="text-lg text-secondary-600 mt-2">Sessions</div>
-                  </CardContent>
-                </Card>
-              </motion.div>
+export default function ReportsPage() {
+  const childName = useChildStore((s) => s.childName);
+  const [storageWarn, setStorageWarn] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiSlow, setAiSlow] = useState(false);
+  const [aiSections, setAiSections] = useState<ReturnType<typeof parseInsightSections> | null>(null);
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-              >
-                <Card className="text-center bg-gradient-to-br from-accent-100 to-accent-200">
-                  <CardContent className="pt-6">
-                    <div className="text-5xl font-bold text-accent-700">
-                      {formatTime(report.totalTimeSpentMs)}
-                    </div>
-                    <div className="text-lg text-accent-600 mt-2">Time Spent</div>
-                  </CardContent>
-                </Card>
-              </motion.div>
+  const profile = useMemo(
+    () => (typeof window === 'undefined' ? null : getProfileForDisplayName(childName)),
+    [childName]
+  );
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-              >
-                <Card className="text-center bg-gradient-to-br from-purple-100 to-purple-200">
-                  <CardContent className="pt-6">
-                    <div className="text-5xl font-bold text-purple-700">
-                      {report.streakDays}🔥
-                    </div>
-                    <div className="text-lg text-purple-600 mt-2">Day Streak</div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            </div>
+  const stats = useMemo(() => computeReportStats(profile), [profile]);
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Progress by Item</CardTitle>
-                <CardDescription>
-                  How well each number or letter has been learned
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-5 md:grid-cols-10 gap-4">
-                  {report.itemsProgress.map((item) => (
-                    <div key={item.item} className="text-center">
-                      <div className="text-2xl font-bold mb-2">{item.item}</div>
-                      <Progress
-                        value={item.masteryLevel}
-                        className="h-2"
-                        indicatorClassName={
-                          item.masteryLevel >= 80
-                            ? 'bg-green-500'
-                            : item.masteryLevel >= 50
-                            ? 'bg-yellow-500'
-                            : 'bg-red-400'
-                        }
-                      />
-                      <div className="text-sm text-gray-500 mt-1">
-                        {item.masteryLevel}%
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+  useEffect(() => {
+    setStorageWarn(storageWarningNeeded());
+  }, [profile, stats?.totalAttempts]);
 
-            {report.recentActivity.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Activity</CardTitle>
-                  <CardDescription>Learning activity from the past week</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {report.recentActivity.map((activity, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"
-                      >
-                        <div>
-                          <div className="font-medium">
-                            {new Date(activity.date).toLocaleDateString('en-US', {
-                              weekday: 'long',
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {activity.activitiesCount} activities
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-lg font-bold text-green-600">
-                            {Math.round(activity.accuracy)}%
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {activity.correctCount}/{activity.activitiesCount} correct
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+  const loadInsights = useCallback(async () => {
+    if (!stats || stats.totalAttempts === 0) return;
+    setAiError(null);
+    setAiSlow(false);
+
+    const cached = readCachedInsights(childName, stats.dataHash);
+    if (cached) {
+      setAiSections(parseInsightSections(cached.raw_text));
+      setAiLoading(false);
+      return;
+    }
+
+    setAiLoading(true);
+    const slowTimer = window.setTimeout(() => setAiSlow(true), 10_000);
+    try {
+      const res = await fetch('/api/progress-insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: buildGeminiPrompt(stats, stats.headerName),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Request failed');
+      }
+      const text = data.text as string;
+      writeCachedInsights(childName, stats.dataHash, text);
+      setAiSections(parseInsightSections(text));
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : 'Could not load insights');
+      setAiSections(null);
+    } finally {
+      window.clearTimeout(slowTimer);
+      setAiLoading(false);
+      setAiSlow(false);
+    }
+  }, [stats, childName]);
+
+  useEffect(() => {
+    void loadInsights();
+  }, [loadInsights]);
+
+  const dateRangeLabel = useMemo(() => {
+    if (!stats?.dateRangeStart || !stats?.dateRangeEnd) return null;
+    const a = new Date(stats.dateRangeStart);
+    const b = new Date(stats.dateRangeEnd);
+    const f = (d: Date) =>
+      d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return `${f(a)} – ${f(b)}`;
+  }, [stats]);
+
+  const handleClear = () => {
+    if (
+      typeof window !== 'undefined' &&
+      window.confirm(
+        `Clear all saved quiz progress for "${childName.trim() || 'this profile'}" on this device?`
+      )
+    ) {
+      clearProfileData(childName);
+      window.location.reload();
+    }
+  };
+
+  let body: ReactNode;
+
+  if (!stats || stats.totalAttempts === 0) {
+      body = (
+        <div className="text-center rounded-3xl bg-white/90 border border-gray-100 shadow-lg p-10">
+          <div className="text-6xl mb-4">📊</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">No quiz data yet</h2>
+          <p className="text-gray-600 mb-6 max-w-md mx-auto">
+            Play the letter and number matching games to start tracking. Free play on the
+            playground is not scored here.
+          </p>
+          <div className="flex flex-wrap gap-3 justify-center">
+            <Link
+              href="/learn/alphabet"
+              className="px-6 py-3 rounded-full bg-orange-400 text-white font-bold shadow-md hover:bg-orange-500"
+            >
+              Alphabet
+            </Link>
+            <Link
+              href="/learn/numbers"
+              className="px-6 py-3 rounded-full bg-lime-500 text-white font-bold shadow-md hover:bg-lime-600"
+            >
+              Numbers
+            </Link>
+          </div>
+        </div>
+      );
+    } else {
+      body = (
+        <div className="space-y-8">
+          <div className="rounded-3xl bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100 p-6 space-y-4">
+            <h2 className="text-xl font-bold text-gray-800">Coach notes</h2>
+            {aiLoading && (
+              <div className="space-y-3 animate-pulse">
+                <div className="h-4 bg-purple-200/60 rounded w-full" />
+                <div className="h-4 bg-purple-200/60 rounded w-5/6" />
+                <div className="h-4 bg-purple-200/60 rounded w-4/6" />
+                {aiSlow && (
+                  <p className="text-sm text-purple-800 pt-2">Taking longer than usual…</p>
+                )}
+              </div>
+            )}
+            {!aiLoading && aiError && (
+              <div className="space-y-3">
+                <p className="text-gray-700">
+                  Couldn&apos;t generate personalized insights right now. The detailed stats below
+                  are still up to date.
+                </p>
+                <p className="text-sm text-gray-500">{aiError}</p>
+                <button
+                  type="button"
+                  onClick={() => void loadInsights()}
+                  className="px-4 py-2 rounded-full bg-purple-500 text-white font-bold text-sm hover:bg-purple-600"
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+            {!aiLoading && !aiError && aiSections && (
+              <div className="space-y-5 text-gray-800">
+                {aiSections.summary && (
+                  <section>
+                    <h3 className="text-sm font-bold text-purple-900 uppercase tracking-wide mb-2">
+                      Summary
+                    </h3>
+                    <p className="whitespace-pre-wrap leading-relaxed">{aiSections.summary}</p>
+                  </section>
+                )}
+                {aiSections.focus && (
+                  <section>
+                    <h3 className="text-sm font-bold text-purple-900 uppercase tracking-wide mb-2">
+                      Focus areas
+                    </h3>
+                    <p className="whitespace-pre-wrap leading-relaxed">{aiSections.focus}</p>
+                  </section>
+                )}
+                {aiSections.activities && (
+                  <section>
+                    <h3 className="text-sm font-bold text-purple-900 uppercase tracking-wide mb-2">
+                      Try at home
+                    </h3>
+                    <p className="whitespace-pre-wrap leading-relaxed">{aiSections.activities}</p>
+                  </section>
+                )}
+                {aiSections.context && (
+                  <section>
+                    <h3 className="text-sm font-bold text-purple-900 uppercase tracking-wide mb-2">
+                      Context & encouragement
+                    </h3>
+                    <p className="whitespace-pre-wrap leading-relaxed">{aiSections.context}</p>
+                  </section>
+                )}
+              </div>
             )}
           </div>
-        ) : (
-          <Card className="text-center p-12">
-            <CardContent>
-              <div className="text-6xl mb-4">📚</div>
-              <h2 className="text-2xl font-bold mb-2">No data yet!</h2>
-              <p className="text-gray-500 mb-6">
-                Start learning to see your progress here.
-              </p>
-              <div className="flex gap-4 justify-center">
-                <Link href="/learn/numbers">
-                  <Button>Learn Numbers</Button>
-                </Link>
-                <Link href="/learn/alphabet">
-                  <Button variant="secondary">Learn Alphabet</Button>
-                </Link>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: 'Sessions', value: stats.totalSessions },
+              { label: 'Quiz answers', value: stats.totalAttempts },
+              { label: 'Last active', value: stats.lastActive ? new Date(stats.lastActive).toLocaleDateString() : '—' },
+              { label: 'Sessions (7 days)', value: stats.sessionsLast7Days },
+            ].map((c) => (
+              <div
+                key={c.label}
+                className="rounded-2xl bg-white/90 border border-gray-100 p-4 text-center shadow-sm"
+              >
+                <div className="text-2xl font-black text-sky-600">{c.value}</div>
+                <div className="text-xs font-semibold text-gray-500 mt-1">{c.label}</div>
               </div>
-            </CardContent>
-          </Card>
+            ))}
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <ModeBlock title="Letters · Easy (visual)" stats={stats.letters.easy} />
+            <ModeBlock title="Letters · Sound" stats={stats.letters.sound} extraLine={
+              stats.letters.sound.replayedSoundLetters.length
+                ? `Often re-listens before answering: ${stats.letters.sound.replayedSoundLetters.join(', ')}`
+                : undefined
+            } />
+            <ModeBlock
+              title="Letters · Pictures (object → letter)"
+              stats={stats.letters.image}
+              extraLine={
+                stats.letters.image.pairStats.length
+                  ? `Weaker links: ${stats.letters.image.pairStats
+                      .filter((p) => p.accuracyPct < 50 && p.attempts >= 2)
+                      .slice(0, 4)
+                      .map((p) => `${p.word}→${p.target}`)
+                      .join(', ') || '—'}`
+                  : undefined
+              }
+            />
+            <ModeBlock title="Numbers · Visual" stats={stats.numbers.easy} />
+            <ModeBlock title="Numbers · Pictures" stats={stats.numbers.image} />
+          </div>
+
+          <p className="text-xs text-gray-500 text-center max-w-xl mx-auto">
+            Privacy: progress stays on this device. Only summary stats and your child&apos;s first
+            name are sent to our AI to write these notes—not photos or full transcripts.
+          </p>
+
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              type="button"
+              onClick={handleClear}
+              className="px-5 py-2 rounded-full border-2 border-gray-300 text-gray-700 font-semibold text-sm hover:bg-gray-50"
+            >
+              Clear data for this name
+            </button>
+          </div>
+        </div>
+      );
+  }
+
+  return (
+    <main className="min-h-screen p-4 md:p-8 bg-[#fff9fc]">
+      <div className="max-w-3xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <Link
+            href="/"
+            className="text-gray-500 hover:text-gray-700 font-medium text-lg"
+          >
+            ← Home
+          </Link>
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8"
+        >
+          <h1 className="text-3xl md:text-4xl font-extrabold text-gray-800 mb-2">
+            Progress report
+          </h1>
+          <p className="text-xl font-bold text-sky-600">
+            {stats?.headerName ?? (childName.trim() || 'Your child')}
+          </p>
+          {dateRangeLabel && (
+            <p className="text-gray-500 mt-1">{dateRangeLabel}</p>
+          )}
+          <p className="text-sm text-gray-500 mt-2">
+            For parents — your child doesn&apos;t need to see this screen.
+          </p>
+        </motion.div>
+
+        {storageWarn && (
+          <div className="mb-6 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-sm p-4">
+            Storage is getting full. You can clear old data below for names you don&apos;t use
+            anymore.
+          </div>
         )}
+
+        {body}
       </div>
     </main>
   );

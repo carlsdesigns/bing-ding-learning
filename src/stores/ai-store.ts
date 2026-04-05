@@ -19,7 +19,7 @@ interface AIActions {
 const MODEL_DEFAULTS: Record<AIProvider, string> = {
   openai: 'gpt-4-turbo',
   anthropic: 'claude-3-opus-20240229',
-  google: 'gemini-pro',
+  google: 'gemini-2.5-flash',
 };
 
 export const useAIStore = create<AIState & AIActions>()(

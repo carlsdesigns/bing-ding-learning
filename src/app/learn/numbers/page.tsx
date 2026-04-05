@@ -21,6 +21,11 @@ import {
   writeNumbersMode,
 } from '@/lib/game-module-storage';
 import { NUMBER_CONFIG } from '@/../scripts/image-config';
+import {
+  logProgressAttempt,
+  numbersModeToProgressMode,
+  useProgressSessionIdleBreak,
+} from '@/lib/progress-report';
 
 const getAttemptCount = () => useLearningStore.getState().attempts;
 
@@ -59,6 +64,9 @@ export default function NumbersPage() {
   const [orderIndex, setOrderIndex] = useState(0);
   const [choiceButtonsLocked, setChoiceButtonsLocked] = useState(false);
   const choiceAdvanceGuardRef = useRef(false);
+  const questionPresentedAtRef = useRef<number | null>(null);
+
+  useProgressSessionIdleBreak();
 
   const { speak } = useVoice();
   const { getHint, getEncouragement } = useAI();
@@ -179,6 +187,11 @@ export default function NumbersPage() {
     buildQuestionRef.current(q[0], true);
   }, [isIntroPhase, mode]);
 
+  useEffect(() => {
+    if (isIntroPhase || currentNumber === null || options.length === 0) return;
+    questionPresentedAtRef.current = Date.now();
+  }, [currentNumber, options, mode, isIntroPhase]);
+
   const handleAnswer = async (selected: number) => {
     if (choiceAdvanceGuardRef.current) return;
     const correct = selected === currentNumber;
@@ -190,6 +203,26 @@ export default function NumbersPage() {
     incrementAttempts();
     incrementInteraction();
     setTotalAttempts((t) => t + 1);
+
+    const optStr = options.map(String);
+    const rt =
+      questionPresentedAtRef.current !== null
+        ? Math.min(120_000, Date.now() - questionPresentedAtRef.current)
+        : 0;
+    const key = currentNumber!.toString();
+    logProgressAttempt({
+      mode: numbersModeToProgressMode(mode),
+      target: key,
+      type: 'number',
+      options: optStr,
+      selected: String(selected),
+      correct,
+      response_time_ms: rt,
+      target_image:
+        mode === 'pictures'
+          ? NUMBER_CONFIG[key]?.description ?? key
+          : undefined,
+    });
 
     if (correct) {
       try {

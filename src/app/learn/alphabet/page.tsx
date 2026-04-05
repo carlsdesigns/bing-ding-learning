@@ -20,6 +20,11 @@ import {
   readAlphabetMode,
   writeAlphabetMode,
 } from '@/lib/game-module-storage';
+import {
+  logProgressAttempt,
+  alphabetModeToProgressMode,
+  useProgressSessionIdleBreak,
+} from '@/lib/progress-report';
 
 const getAttemptCount = () => useLearningStore.getState().attempts;
 
@@ -69,6 +74,10 @@ export default function AlphabetPage() {
   const [orderIndex, setOrderIndex] = useState(0);
   const [choiceButtonsLocked, setChoiceButtonsLocked] = useState(false);
   const choiceAdvanceGuardRef = useRef(false);
+  const questionPresentedAtRef = useRef<number | null>(null);
+  const userReplayedSoundRef = useRef(false);
+
+  useProgressSessionIdleBreak();
 
   const { speak } = useVoice();
   const { getHint, getEncouragement } = useAI();
@@ -192,6 +201,12 @@ export default function AlphabetPage() {
     buildQuestionRef.current(q[0], true);
   }, [isIntroPhase, mode]);
 
+  useEffect(() => {
+    if (isIntroPhase || !currentLetter || options.length === 0) return;
+    questionPresentedAtRef.current = Date.now();
+    userReplayedSoundRef.current = false;
+  }, [currentLetter, options, mode, isIntroPhase]);
+
   const handleAnswer = async (selected: string) => {
     if (choiceAdvanceGuardRef.current) return;
     const correct = selected === currentLetter;
@@ -203,6 +218,22 @@ export default function AlphabetPage() {
     incrementAttempts();
     incrementInteraction();
     setTotalAttempts((t) => t + 1);
+
+    const rt =
+      questionPresentedAtRef.current !== null
+        ? Math.min(120_000, Date.now() - questionPresentedAtRef.current)
+        : 0;
+    logProgressAttempt({
+      mode: alphabetModeToProgressMode(mode),
+      target: currentLetter!,
+      type: 'letter',
+      options: [...options],
+      selected,
+      correct,
+      response_time_ms: rt,
+      replayed_sound: mode === 'phonics' ? userReplayedSoundRef.current : undefined,
+      target_image: mode === 'pictures' ? WORDS[currentLetter!] : undefined,
+    });
 
     if (correct) {
       try {
@@ -278,6 +309,9 @@ export default function AlphabetPage() {
 
   const handleSpeakLetter = () => {
     if (!currentLetter) return;
+    if (mode === 'phonics') {
+      userReplayedSoundRef.current = true;
+    }
     if (mode === 'pictures') {
       const word = WORDS[currentLetter];
       speak(`${currentLetter} is for ${word}. Find the letter ${currentLetter}.`);

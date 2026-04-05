@@ -36,11 +36,11 @@ export interface LearningContext {
 export const DEFAULT_CONFIGS: Record<AIProvider, { model: string }> = {
   openai: { model: 'gpt-4-turbo' },
   anthropic: { model: 'claude-3-opus-20240229' },
-  google: { model: 'gemini-pro' },
+  google: { model: 'gemini-2.5-flash' },
 };
 
 export const AVAILABLE_MODELS: Record<AIProvider, string[]> = {
   openai: ['gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
   anthropic: ['claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
-  google: ['gemini-pro', 'gemini-pro-vision'],
+  google: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'],
 };

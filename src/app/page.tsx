@@ -10,6 +10,7 @@ import {
   parseChildNameFromSearch,
   stripChildNameParamFromCurrentUrl,
 } from '@/lib/home-share-link';
+import { useEndProgressSessionOnHome } from '@/lib/progress-report';
 
 export default function HomePage() {
   const { childName, setChildName } = useChildStore();
@@ -17,6 +18,8 @@ export default function HomePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+
+  useEndProgressSessionOnHome();
 
   useEffect(() => {
     setIsHydrated(true);
