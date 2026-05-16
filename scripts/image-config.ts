@@ -77,7 +77,7 @@ export const LETTER_CONFIG: Record<string, { word: string; prompt: string }> = {
   },
   D: { 
     word: 'Dog', 
-    prompt: 'A happy golden retriever puppy with floppy ears, friendly and excited' 
+    prompt: 'A happy tea cup poodle' 
   },
   E: { 
     word: 'Elephant', 
